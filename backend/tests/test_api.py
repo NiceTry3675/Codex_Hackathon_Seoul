@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 import pytest
 
+import backend.main as main
 from backend.main import app, rooms
+from backend.models import DevilsAdvocate
 
 
 @pytest.fixture(autouse=True)
@@ -153,3 +155,38 @@ def test_submission_is_rejected_after_the_room_is_full(client: TestClient):
     assert first.status_code == 201
     assert response.status_code == 409
     assert response.json()["detail"] == "room is full"
+
+
+def test_devils_advocate_is_cached_after_the_first_analysis(client: TestClient, monkeypatch):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    calls: list[str] = []
+
+    def fake_devils_advocate(target, _low_agreement, _concerns):
+        calls.append(target)
+        return DevilsAdvocate(target=target, challenges=["무엇이 실패할 수 있나요?", "대안은 있나요?"])
+
+    monkeypatch.setattr(main, "generate_devils_advocate", fake_devils_advocate)
+
+    first = client.get(f"/api/rooms/{room['code']}/analysis")
+    second = client.get(f"/api/rooms/{room['code']}/analysis")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert calls == ["A"]
+    assert second.json()["devils_advocate"] == first.json()["devils_advocate"]
+
+
+def test_devils_advocate_failure_does_not_block_analysis(client: TestClient, monkeypatch):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+
+    def fail_devils_advocate(*_args):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(main, "generate_devils_advocate", fail_devils_advocate)
+
+    response = client.get(f"/api/rooms/{room['code']}/analysis")
+
+    assert response.status_code == 200
+    assert "devils_advocate" not in response.json()

@@ -84,6 +84,46 @@ def _require_exact_keys(
     )
 
 
+def _get_devils_advocate(room: Room, result: dict) -> None:
+    """Populate the optional qualitative review once per completed room."""
+
+    if room.devils_advocate_generated:
+        if room.devils_advocate is not None:
+            result["devils_advocate"] = room.devils_advocate
+        return
+
+    room.devils_advocate_generated = True
+    low_agreement = [
+        criterion
+        for criterion, level in result.get("weight_agreement", {}).items()
+        if level == "LOW"
+    ]
+    low_agreement.extend(
+        f"{option} / {criterion}"
+        for option, levels in result.get("score_agreement", {}).items()
+        for criterion, level in levels.items()
+        if level == "LOW"
+    )
+    concerns = [
+        concern
+        for submission in room.submissions
+        if submission.parsed is not None
+        for concern in submission.parsed.concerns
+    ]
+    try:
+        room.devils_advocate = generate_devils_advocate(
+            result.get("current_winner"),
+            low_agreement,
+            concerns,
+        )
+    except Exception:
+        # Qualitative review is optional; its provider must never block analysis.
+        room.devils_advocate = None
+
+    if room.devils_advocate is not None:
+        result["devils_advocate"] = room.devils_advocate
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
@@ -168,30 +208,7 @@ def get_analysis(
             detail=str(exc),
         ) from exc
 
-    low_agreement = [
-        criterion
-        for criterion, level in result.get("weight_agreement", {}).items()
-        if level == "LOW"
-    ]
-    low_agreement.extend(
-        f"{option} / {criterion}"
-        for option, levels in result.get("score_agreement", {}).items()
-        for criterion, level in levels.items()
-        if level == "LOW"
-    )
-    concerns = [
-        concern
-        for submission in room.submissions
-        if submission.parsed is not None
-        for concern in submission.parsed.concerns
-    ]
-    devils_advocate = generate_devils_advocate(
-        result.get("current_winner"),
-        low_agreement,
-        concerns,
-    )
-    if devils_advocate is not None:
-        result["devils_advocate"] = devils_advocate
+    _get_devils_advocate(room, result)
 
     return AnalysisResponse.model_validate(result)
 

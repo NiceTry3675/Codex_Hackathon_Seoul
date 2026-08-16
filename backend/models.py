@@ -39,6 +39,11 @@ class Submission(SubmissionCreate):
     parsed: ParsedOpinion | None = None
 
 
+class DevilsAdvocate(ApiModel):
+    target: str
+    challenges: list[str]
+
+
 class RoomCreate(ApiModel):
     question: str = Field(min_length=1, max_length=500)
     options: list[str] = Field(min_length=2, max_length=10)
@@ -71,6 +76,8 @@ class Room(ApiModel):
     criteria: list[str]
     expected_members: int = 4
     submissions: list[Submission] = Field(default_factory=list)
+    devils_advocate: DevilsAdvocate | None = None
+    devils_advocate_generated: bool = False
 
 
 class RoomResponse(ApiModel):
@@ -92,11 +99,6 @@ class SubmitResponse(ApiModel):
 
 class HealthResponse(ApiModel):
     status: Literal["ok"] = "ok"
-
-
-class DevilsAdvocate(ApiModel):
-    target: str
-    challenges: list[str]
 
 
 class AnalysisResponse(ApiModel):

@@ -291,14 +291,15 @@ Build-B는 메시지를 수정하지 않고 시간순으로 추가한다.
 - 일부 질문만 유효한 경우: 부분 채택하지 않고 전체 결과 폐기
 - 어떤 실패에서도 통계 분석의 status code, winner, stability, flip point는 유지
 
-## 9. MVP와 확장 범위
+## 9. 구현 범위
 
 | 범위 | 동작 |
 |---|---|
-| MVP 런타임 | Challenger 1회 호출 후 `{target, challenges[]}` 반환 |
-| 발표 리허설 | 사람 Defender가 답하고 Challenger 판정을 사람이 시뮬레이션 |
-| Stretch | Build-B 내부 transcript에 2라운드 공방 추가 |
-| 공개 API | 확장 후에도 기존 `{target, challenges[]}` 스키마 유지 |
+| 분석 런타임 | Challenger 1회 호출 후 `{target, challenges[]}` 반환 및 증거 snapshot 생성 |
+| Defender 턴 | `/api/rooms/{code}/debate/defend`에서 질문별 사람 답변을 일괄 제출 |
+| 최종 Challenger 턴 | 답변을 `resolved`, `open`, `reframed`로 판정하고 append-only transcript에 저장 |
+| 공개 분석 API | 기존 `{target, challenges[]}` 스키마를 유지하고 열린 항목만 의제에 투영 |
+| 실패 처리 | 질문 생성은 결정적 질문으로, 최종 판정은 `open`으로 폴백 |
 
 ## 10. Build-B 구현 단위
 

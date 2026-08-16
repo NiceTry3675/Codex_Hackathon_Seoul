@@ -40,6 +40,7 @@ docker run -d \
   -p 80:8080 \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   -e OPENAI_MODEL=gpt-5.6-sol \
+  -e OPENAI_TIMEOUT_SECONDS=60 \
   "$CONSENSUS_IMAGE_URI"
 ```
 

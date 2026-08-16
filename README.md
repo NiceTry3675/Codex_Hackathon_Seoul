@@ -72,8 +72,8 @@ Docker가 없는 개발 환경에서는 API·정적 SPA·데모 계약까지 같
 ./scripts/release_gate.sh --skip-docker
 ```
 
-`OPENAI_API_KEY`가 export되어 있으면 릴리스 게이트가 실제 GPT 구조화와
-Devil's Advocate 호출도 각각 한 번 검증합니다. 키가 없으면 이 단계만 건너뛰고
+`OPENAI_API_KEY`가 export되어 있으면 릴리스 게이트가 실제 GPT 구조화,
+Devil's Advocate 질문, Defender 답변 판정을 각각 한 번 검증합니다. 키가 없으면 이 단계만 건너뛰고
 결정적 폴백을 포함한 핵심 경로를 검증합니다. 실 API만 별도로 확인하려면:
 
 ```bash
@@ -134,6 +134,14 @@ Dockerfile              React 빌드 + FastAPI 런타임
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
 | `POST` | `/api/rooms/{code}/submit` | 익명 또는 실명 의견 제출 |
 | `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 |
+| `GET` | `/api/rooms/{code}/debate` | 동결된 증거와 append-only 공방 transcript 조회 |
+| `POST` | `/api/rooms/{code}/debate/defend` | 질문별 Defender 답변 제출 후 최종 판정 |
+
+`/analysis`를 처음 조회하면 Challenger 질문과 증거 스냅샷이 생성됩니다. 이후
+`/debate/defend`에 모든 `challenge_id`의 답변을 한 번에 제출하면 두 번째이자 마지막
+Challenger 턴이 각 항목을 `resolved`, `open`, `reframed`로 판정합니다. `open`과
+`reframed` 항목만 다음 `/analysis` 응답의 `discussion_agenda`에 추가됩니다. 원본 의견
+`reason`은 공방 증거에 포함되지 않으며, LLM 실패 시 판정은 안전하게 `open`으로 유지됩니다.
 
 로컬은 프로세스 메모리를 사용하고, App Runner에서는 DynamoDB로 방과 제출을 영속화합니다.
 Google 로그인은 서명 쿠키 기반이며, 사용자 프로필 DB는 `/api/auth/me`의 `google_sub`를

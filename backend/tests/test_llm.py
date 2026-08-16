@@ -1,6 +1,7 @@
 import json
 
 import backend.llm as llm
+from backend.models import ChallengerQuestion, DefenderAnswer, EvidenceSnapshot
 
 
 def test_parse_opinion_returns_none_without_an_api_key(monkeypatch):
@@ -61,8 +62,10 @@ def test_chat_json_uses_strict_schema_and_an_output_limit(monkeypatch):
     assert result == {"ok": True}
     assert captured["body"]["response_format"]["type"] == "json_schema"
     assert captured["body"]["response_format"]["json_schema"]["strict"] is True
+    assert captured["body"]["reasoning_effort"] == "medium"
+    assert captured["body"]["verbosity"] == "low"
     assert captured["body"]["max_completion_tokens"] == 500
-    assert captured["timeout"] == 5.0
+    assert captured["timeout"] == 60.0
 
 
 def test_parse_opinion_accepts_only_room_labels(monkeypatch):
@@ -134,3 +137,118 @@ def test_fallback_devils_advocate_is_deterministic_and_uses_evidence():
     assert first.target == "A"
     assert len(first.challenges) == 2
     assert "speed" in first.challenges[0]
+
+
+def test_devils_advocate_rejects_duplicate_or_numeric_questions(monkeypatch):
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "challenges": ["실패 조건은 무엇인가요?", "실패 조건은 무엇인가요?"],
+        },
+    )
+    assert llm.generate_devils_advocate("A", [], []) is None
+
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "challenges": ["일주일 안에 실패하면 어떻게 하나요?", "대안은 무엇인가요?"],
+        },
+    )
+    # Korean number words are allowed; invented digit patterns are not.
+    assert llm.generate_devils_advocate("A", [], []) is not None
+
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "challenges": ["7일 안에 실패하면 어떻게 하나요?", "대안은 무엇인가요?"],
+        },
+    )
+    assert llm.generate_devils_advocate("A", [], []) is None
+
+
+def test_evaluate_defenses_validates_ids_language_and_resolution_shape(monkeypatch):
+    snapshot = EvidenceSnapshot(id="snapshot-test", target="A")
+    questions = [
+        ChallengerQuestion(
+            sequence=1,
+            challenge_id="c1",
+            evidence_snapshot_id=snapshot.id,
+            evidence_keys=["target"],
+            question="실패 조건은 무엇인가요?",
+        ),
+        ChallengerQuestion(
+            sequence=2,
+            challenge_id="c2",
+            evidence_snapshot_id=snapshot.id,
+            evidence_keys=["target"],
+            question="대안은 무엇인가요?",
+        ),
+    ]
+    answers = [
+        DefenderAnswer(challenge_id="c1", status="mitigated", evidence="검증했습니다."),
+        DefenderAnswer(challenge_id="c2", status="open", unknowns="아직 모릅니다."),
+    ]
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "resolutions": [
+                {
+                    "challenge_id": "c2",
+                    "resolution": "reframed",
+                    "reason": "더 작은 질문으로 좁혀야 합니다.",
+                    "reframed_question": "가장 먼저 확인할 신호는 무엇인가요?",
+                },
+                {
+                    "challenge_id": "c1",
+                    "resolution": "resolved",
+                    "reason": "제시한 근거가 실패 조건을 직접 해소합니다.",
+                    "reframed_question": None,
+                },
+            ]
+        },
+    )
+
+    result = llm.evaluate_defenses(snapshot, questions, answers)
+
+    assert result is not None
+    assert [item.challenge_id for item in result] == ["c1", "c2"]
+    assert result[1].resolution == "reframed"
+
+
+def test_evaluate_defenses_rejects_invented_numbers(monkeypatch):
+    snapshot = EvidenceSnapshot(id="snapshot-test", target="A")
+    questions = [
+        ChallengerQuestion(
+            sequence=index,
+            challenge_id=f"c{index}",
+            evidence_snapshot_id=snapshot.id,
+            evidence_keys=["target"],
+            question="실패 조건은 무엇인가요?",
+        )
+        for index in (1, 2)
+    ]
+    answers = [
+        DefenderAnswer(challenge_id=f"c{index}", status="open")
+        for index in (1, 2)
+    ]
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "resolutions": [
+                {
+                    "challenge_id": f"c{index}",
+                    "resolution": "open",
+                    "reason": "검증 확률이 50퍼센트라서 열려 있습니다.",
+                    "reframed_question": None,
+                }
+                for index in (1, 2)
+            ]
+        },
+    )
+
+    assert llm.evaluate_defenses(snapshot, questions, answers) is None

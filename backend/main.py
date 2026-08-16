@@ -27,11 +27,28 @@ from .auth import (
     user_from_request,
     verify_google_credential,
 )
-from .llm import fallback_devils_advocate, generate_devils_advocate, parse_opinion
+from .debate import (
+    append_defenses,
+    build_evidence_snapshot,
+    challenge_questions,
+    fallback_resolutions,
+    finish_debate,
+    project_open_agenda,
+    start_debate,
+    validate_answers,
+)
+from .llm import (
+    evaluate_defenses,
+    fallback_devils_advocate,
+    generate_devils_advocate,
+    parse_opinion,
+)
 from .models import (
     AnalysisResponse,
     AuthConfig,
     AuthState,
+    DebateState,
+    DefenderTurnRequest,
     GoogleCredential,
     HealthResponse,
     LogoutResponse,
@@ -135,33 +152,26 @@ def _get_devils_advocate(room: Room, result: dict) -> None:
         generation_lock = room_analysis_locks.setdefault(room.code, Lock())
 
     with generation_lock:
+        snapshot = build_evidence_snapshot(result, room.submissions)
         if room.devils_advocate_generated:
             if room.devils_advocate is not None:
                 result["devils_advocate"] = room.devils_advocate
+                if room.debate is None:
+                    room.debate = start_debate(
+                        snapshot,
+                        room.devils_advocate,
+                        room.devils_advocate_source or "fallback",
+                    )
+                    room_store.save(room)
             return
 
-        low_agreement = [
-            criterion
-            for criterion, level in result.get("weight_agreement", {}).items()
-            if level == "LOW"
-        ]
-        low_agreement.extend(
-            f"{option} / {criterion}"
-            for option, levels in result.get("score_agreement", {}).items()
-            for criterion, level in levels.items()
-            if level == "LOW"
-        )
-        concerns = [
-            concern
-            for submission in room.submissions
-            if submission.parsed is not None
-            for concern in submission.parsed.concerns
-        ]
         try:
             room.devils_advocate = generate_devils_advocate(
-                result.get("current_winner"),
-                low_agreement,
-                concerns,
+                snapshot.target,
+                snapshot.low_agreement,
+                snapshot.concerns,
+                snapshot.hidden_conflicts,
+                snapshot.discussion_agenda,
             )
         except Exception as exc:
             logger.warning(
@@ -172,14 +182,19 @@ def _get_devils_advocate(room: Room, result: dict) -> None:
 
         if room.devils_advocate is None:
             room.devils_advocate = fallback_devils_advocate(
-                result["current_winner"],
-                low_agreement,
-                concerns,
+                snapshot.target,
+                snapshot.low_agreement,
+                snapshot.concerns,
             )
             room.devils_advocate_source = "fallback"
         else:
             room.devils_advocate_source = "live"
 
+        room.debate = start_debate(
+            snapshot,
+            room.devils_advocate,
+            room.devils_advocate_source,
+        )
         room.devils_advocate_generated = True
         room_store.save(room)
         logger.info(
@@ -372,8 +387,77 @@ def get_analysis(
         ) from exc
 
     _get_devils_advocate(room, result)
+    for agenda_item in project_open_agenda(room.debate):
+        if agenda_item not in result["discussion_agenda"]:
+            result["discussion_agenda"].append(agenda_item)
 
     return AnalysisResponse.model_validate(result)
+
+
+@app.get("/api/rooms/{code}/debate", response_model=DebateState)
+def get_debate(
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DebateState:
+    room = _get_room(code)
+    if room.debate is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="analysis must be generated before the debate",
+        )
+    return room.debate
+
+
+@app.post("/api/rooms/{code}/debate/defend", response_model=DebateState)
+def defend_decision(
+    payload: DefenderTurnRequest,
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DebateState:
+    room = _get_room(code)
+    with rooms_lock:
+        debate_lock = room_analysis_locks.setdefault(room.code, Lock())
+
+    with debate_lock:
+        room = _get_room(code)
+        if room.debate is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="analysis must be generated before the debate",
+            )
+        if room.debate.completed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="debate is already complete",
+            )
+        try:
+            validate_answers(room.debate, payload.answers)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(exc),
+            ) from exc
+
+        questions = challenge_questions(room.debate)
+        append_defenses(room.debate, payload.answers)
+        try:
+            resolutions = evaluate_defenses(
+                room.debate.evidence_snapshot,
+                questions,
+                payload.answers,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Unexpected defense review provider failure error=%s",
+                type(exc).__name__,
+            )
+            resolutions = None
+        if resolutions is None:
+            resolutions = fallback_resolutions(questions)
+            source = "fallback"
+        else:
+            source = "live"
+        finish_debate(room.debate, resolutions, source)
+        room_store.save(room)
+        return room.debate
 
 
 frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"

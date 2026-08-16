@@ -7,7 +7,7 @@ import pytest
 
 import backend.main as main
 from backend.main import app, room_analysis_locks, rooms
-from backend.models import DevilsAdvocate, SubmissionCreate
+from backend.models import DefenseResolution, DevilsAdvocate, SubmissionCreate
 
 
 @pytest.fixture(autouse=True)
@@ -229,7 +229,7 @@ def test_devils_advocate_is_cached_after_the_first_analysis(client: TestClient, 
     client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
     calls: list[str] = []
 
-    def fake_devils_advocate(target, _low_agreement, _concerns):
+    def fake_devils_advocate(target, *_evidence):
         calls.append(target)
         return DevilsAdvocate(target=target, challenges=["무엇이 실패할 수 있나요?", "대안은 있나요?"])
 
@@ -275,7 +275,7 @@ def test_concurrent_analysis_calls_generate_devils_advocate_once(
     calls_lock = Lock()
     calls = 0
 
-    def slow_devils_advocate(target, _low_agreement, _concerns):
+    def slow_devils_advocate(target, *_evidence):
         nonlocal calls
         with calls_lock:
             calls += 1
@@ -295,3 +295,141 @@ def test_concurrent_analysis_calls_generate_devils_advocate_once(
 
     assert calls == 1
     assert first.devils_advocate == second.devils_advocate
+
+
+def test_analysis_starts_a_frozen_append_only_debate(client: TestClient, monkeypatch):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    monkeypatch.setattr(
+        main,
+        "generate_devils_advocate",
+        lambda target, *_: DevilsAdvocate(
+            target=target,
+            challenges=["실패 조건은 무엇인가요?", "전환 기준은 무엇인가요?"],
+        ),
+    )
+
+    client.get(f"/api/rooms/{room['code']}/analysis").raise_for_status()
+    debate = client.get(f"/api/rooms/{room['code']}/debate")
+
+    assert debate.status_code == 200
+    body = debate.json()
+    assert body["evidence_snapshot"]["id"].startswith("snapshot-")
+    assert body["evidence_snapshot"]["target"] == "A"
+    assert [message["challenge_id"] for message in body["messages"]] == ["c1", "c2"]
+    assert [message["sequence"] for message in body["messages"]] == [1, 2]
+    assert all(message["role"] == "challenger" for message in body["messages"])
+    assert "reason" not in body["evidence_snapshot"]
+
+
+def test_defender_round_appends_resolutions_and_projects_open_agenda(
+    client: TestClient,
+    monkeypatch,
+):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    monkeypatch.setattr(
+        main,
+        "generate_devils_advocate",
+        lambda target, *_: DevilsAdvocate(
+            target=target,
+            challenges=["실패 조건은 무엇인가요?", "전환 기준은 무엇인가요?"],
+        ),
+    )
+    monkeypatch.setattr(
+        main,
+        "evaluate_defenses",
+        lambda *_: [
+            DefenseResolution(
+                challenge_id="c1",
+                resolution="resolved",
+                reason="검증 근거와 대응책이 실패 조건을 직접 해소합니다.",
+            ),
+            DefenseResolution(
+                challenge_id="c2",
+                resolution="reframed",
+                reason="전환 조건을 더 작고 검증 가능한 질문으로 좁혀야 합니다.",
+                reframed_question="가장 먼저 확인할 전환 신호는 무엇인가요?",
+            ),
+        ],
+    )
+    client.get(f"/api/rooms/{room['code']}/analysis").raise_for_status()
+
+    defended = client.post(
+        f"/api/rooms/{room['code']}/debate/defend",
+        json={
+            "answers": [
+                {
+                    "challenge_id": "c1",
+                    "status": "mitigated",
+                    "evidence": "핵심 경로 검증을 마쳤습니다.",
+                    "unknowns": "",
+                    "mitigation": "실패 시 대체 경로를 사용합니다.",
+                },
+                {
+                    "challenge_id": "c2",
+                    "status": "open",
+                    "evidence": "",
+                    "unknowns": "전환 신호가 아직 정의되지 않았습니다.",
+                    "mitigation": "관측 가능한 신호를 정합니다.",
+                },
+            ]
+        },
+    )
+
+    assert defended.status_code == 200
+    body = defended.json()
+    assert body["completed"] is True
+    assert body["resolution_source"] == "live"
+    assert [message["sequence"] for message in body["messages"]] == list(range(1, 7))
+    assert [message["role"] for message in body["messages"]] == [
+        "challenger",
+        "challenger",
+        "defender",
+        "defender",
+        "challenger",
+        "challenger",
+    ]
+    analysis = client.get(f"/api/rooms/{room['code']}/analysis").json()
+    assert "가장 먼저 확인할 전환 신호는 무엇인가요?" in analysis["discussion_agenda"]
+
+
+def test_defender_round_rejects_incomplete_ids(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    client.get(f"/api/rooms/{room['code']}/analysis").raise_for_status()
+
+    response = client.post(
+        f"/api/rooms/{room['code']}/debate/defend",
+        json={
+            "answers": [
+                {"challenge_id": "c1", "status": "open"},
+                {"challenge_id": "unknown", "status": "open"},
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "answers must match every challenge_id"
+
+
+def test_defender_provider_failure_closes_with_open_fallback(client: TestClient, monkeypatch):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    client.get(f"/api/rooms/{room['code']}/analysis").raise_for_status()
+    monkeypatch.setattr(main, "evaluate_defenses", lambda *_: None)
+
+    response = client.post(
+        f"/api/rooms/{room['code']}/debate/defend",
+        json={
+            "answers": [
+                {"challenge_id": "c1", "status": "open"},
+                {"challenge_id": "c2", "status": "open"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["resolution_source"] == "fallback"
+    verdicts = response.json()["messages"][-2:]
+    assert all(message["resolution"] == "open" for message in verdicts)

@@ -87,6 +87,7 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
 4. `.env`에서 읽은 값을 출력하지 않고 App Runner plain-text runtime environment variable로 주입한다.
    - `OPENAI_API_KEY`: 실제 키
    - `OPENAI_MODEL`: `gpt-5.6-sol`
+   - `OPENAI_TIMEOUT_SECONDS`: `60`
    - `CONSENSUS_TABLE_NAME`: `consensus-rooms`
    - `GOOGLE_CLIENT_ID`: Google OAuth 웹 Client ID
    - `SESSION_SECRET`: 운영용 무작위 값(최소 32자)

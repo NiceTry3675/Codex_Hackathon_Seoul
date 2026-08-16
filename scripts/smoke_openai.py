@@ -10,7 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.llm import generate_devils_advocate, parse_opinion
+from backend.llm import evaluate_defenses, generate_devils_advocate, parse_opinion
+from backend.models import ChallengerQuestion, DefenderAnswer, EvidenceSnapshot
 
 
 def load_local_openai_config() -> None:
@@ -59,6 +60,35 @@ def main() -> None:
     if advocate is None:
         raise SystemExit("live Devil's Advocate failed; inspect the sanitized backend log")
 
+    snapshot = EvidenceSnapshot(
+        id="snapshot-smoke",
+        target=advocate.target,
+        low_agreement=["구현 가능성"],
+        concerns=["구현 가능성"],
+    )
+    questions = [
+        ChallengerQuestion(
+            sequence=index,
+            challenge_id=f"c{index}",
+            evidence_snapshot_id=snapshot.id,
+            evidence_keys=["target", "low_agreement", "concerns"],
+            question=question,
+        )
+        for index, question in enumerate(advocate.challenges, start=1)
+    ]
+    answers = [
+        DefenderAnswer(
+            challenge_id=question.challenge_id,
+            status="open",
+            unknowns="실서비스 조건에서 아직 검증되지 않았습니다.",
+            mitigation="실서비스 스모크 테스트로 확인합니다.",
+        )
+        for question in questions
+    ]
+    resolutions = evaluate_defenses(snapshot, questions, answers)
+    if resolutions is None:
+        raise SystemExit("live defense review failed; inspect the sanitized backend log")
+
     print(
         json.dumps(
             {
@@ -69,6 +99,8 @@ def main() -> None:
                 "parsed_concern_count": len(opinion.concerns),
                 "devils_advocate_target": advocate.target,
                 "devils_advocate_challenge_count": len(advocate.challenges),
+                "defense_resolution_count": len(resolutions),
+                "defense_resolutions": [item.resolution for item in resolutions],
             },
             ensure_ascii=False,
         )

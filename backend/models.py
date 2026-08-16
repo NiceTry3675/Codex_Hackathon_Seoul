@@ -11,6 +11,8 @@ Score = Annotated[int, Field(ge=1, le=5)]
 Weight = Annotated[int, Field(ge=1, le=10)]
 AgreementLevel = Literal["HIGH", "MID", "LOW"]
 SubmissionMode = Literal["anonymous", "named"]
+DefenseStatus = Literal["mitigated", "open", "invalid"]
+ChallengeResolution = Literal["resolved", "open", "reframed"]
 
 
 class ApiModel(BaseModel):
@@ -51,7 +53,77 @@ class Submission(SubmissionCreate):
 
 class DevilsAdvocate(ApiModel):
     target: str
-    challenges: list[str]
+    challenges: list[str] = Field(min_length=2, max_length=3)
+
+
+class EvidenceSnapshot(ApiModel):
+    id: str
+    target: str
+    low_agreement: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    hidden_conflicts: list[str] = Field(default_factory=list)
+    discussion_agenda: list[str] = Field(default_factory=list)
+
+
+class ChallengerQuestion(ApiModel):
+    sequence: int = Field(ge=1)
+    challenge_id: str
+    turn: Literal[1] = 1
+    role: Literal["challenger"] = "challenger"
+    evidence_snapshot_id: str
+    evidence_keys: list[str]
+    question: str
+
+
+class DefenderAnswer(ApiModel):
+    challenge_id: str = Field(min_length=1, max_length=20)
+    status: DefenseStatus
+    evidence: str = Field(default="", max_length=2_000)
+    unknowns: str = Field(default="", max_length=2_000)
+    mitigation: str = Field(default="", max_length=2_000)
+
+    @field_validator("challenge_id", "evidence", "unknowns", "mitigation")
+    @classmethod
+    def strip_defense_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class DefenderTurnRequest(ApiModel):
+    answers: list[DefenderAnswer] = Field(min_length=2, max_length=3)
+
+
+class DefenderMessage(DefenderAnswer):
+    sequence: int = Field(ge=1)
+    turn: Literal[1] = 1
+    role: Literal["defender"] = "defender"
+    evidence_snapshot_id: str
+    evidence_keys: list[str]
+
+
+class DefenseResolution(ApiModel):
+    challenge_id: str
+    resolution: ChallengeResolution
+    reason: str
+    reframed_question: str | None = None
+
+
+class ChallengerResolutionMessage(DefenseResolution):
+    sequence: int = Field(ge=1)
+    turn: Literal[2] = 2
+    role: Literal["challenger"] = "challenger"
+    evidence_snapshot_id: str
+    evidence_keys: list[str]
+
+
+DebateMessage = ChallengerQuestion | DefenderMessage | ChallengerResolutionMessage
+
+
+class DebateState(ApiModel):
+    evidence_snapshot: EvidenceSnapshot
+    messages: list[DebateMessage] = Field(default_factory=list)
+    completed: bool = False
+    challenger_source: Literal["live", "fallback"]
+    resolution_source: Literal["live", "fallback"] | None = None
 
 
 class RoomCreate(ApiModel):
@@ -91,6 +163,7 @@ class Room(ApiModel):
     devils_advocate: DevilsAdvocate | None = None
     devils_advocate_generated: bool = False
     devils_advocate_source: Literal["live", "fallback"] | None = None
+    debate: DebateState | None = None
 
 
 class RoomResponse(ApiModel):

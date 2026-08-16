@@ -86,6 +86,8 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 | GET | `/api/rooms/{code}` | 방 정보 + 제출 수 |
 | POST | `/api/rooms/{code}/submit` | 의견 제출 (내부에서 GPT 구조화 호출) |
 | GET | `/api/rooms/{code}/analysis` | 전체 분석 결과 (아래 §5 출력 전부) |
+| GET | `/api/rooms/{code}/debate` | 동결 증거·질문·답변·판정 transcript 조회 |
+| POST | `/api/rooms/{code}/debate/defend` | 질문별 Defender 답변 제출 및 최종 판정 |
 
 `/analysis` 응답 스키마:
 

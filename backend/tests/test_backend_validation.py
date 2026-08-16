@@ -187,7 +187,19 @@ def test_unknown_room_submission_is_not_accepted(client: TestClient):
     assert response.json()["detail"] == "room not found"
 
 
-def test_named_room_rejects_a_duplicate_participant(client: TestClient):
+def test_named_room_rejects_a_duplicate_participant(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        main,
+        "user_from_request",
+        lambda _request: AuthUser(
+            google_sub="room-creator",
+            email="creator@example.com",
+            name="방장",
+        ),
+    )
     room = client.post(
         "/api/rooms",
         json=room_payload(expected_members=2, submission_mode="named"),

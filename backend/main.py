@@ -271,7 +271,12 @@ def logout(response: Response) -> LogoutResponse:
 
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
-def create_room(payload: RoomCreate) -> RoomResponse:
+def create_room(request: Request, payload: RoomCreate) -> RoomResponse:
+    if payload.submission_mode == "named" and user_from_request(request) is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication is required to create named rooms",
+        )
     with rooms_lock:
         while True:
             code = _new_room_code()

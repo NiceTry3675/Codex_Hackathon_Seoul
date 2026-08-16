@@ -1,10 +1,28 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { CreateRoomPayload } from "../types";
 
 interface CreateRoomPageProps {
+  isAuthenticated: boolean;
   loading: boolean;
   onCreate: (payload: CreateRoomPayload) => Promise<void>;
 }
+
+const DEMO_QUESTION = "6시간 해커톤에서 어떤 아이디어를 만들까요?";
+const DEMO_OPTIONS = "A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구";
+const DEMO_CRITERIA = "창의성\n구현 가능성\n발표 임팩트";
+
+const submissionModes = [
+  {
+    value: "anonymous",
+    label: "익명 제출",
+    description: "이름 없이 판단 내용만 수집합니다.",
+  },
+  {
+    value: "named",
+    label: "실명 제출",
+    description: "이름을 받고 대기 화면에 제출자를 표시합니다.",
+  },
+] as const;
 
 const lines = (value: string) =>
   value
@@ -12,15 +30,22 @@ const lines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-function CreateRoomPage({ loading, onCreate }: CreateRoomPageProps) {
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState("");
-  const [criteria, setCriteria] = useState("");
+function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPageProps) {
+  const [question, setQuestion] = useState(DEMO_QUESTION);
+  const [options, setOptions] = useState(DEMO_OPTIONS);
+  const [criteria, setCriteria] = useState(DEMO_CRITERIA);
   const [expectedMembers, setExpectedMembers] = useState(4);
   const [submissionMode, setSubmissionMode] = useState<"anonymous" | "named">("anonymous");
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSubmissionMode("anonymous");
+    }
+  }, [isAuthenticated]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (submissionMode === "named" && !isAuthenticated) return;
     void onCreate({
       question: question.trim(),
       options: lines(options),
@@ -82,20 +107,51 @@ function CreateRoomPage({ loading, onCreate }: CreateRoomPageProps) {
         <fieldset>
           <legend className="mb-3 text-sm font-bold text-stone-600">제출 방식</legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            {([
-              ["anonymous", "익명 제출", "이름 없이 판단 내용만 수집합니다."],
-              ["named", "실명 제출", "이름을 받고 대기 화면에 제출자를 표시합니다."],
-            ] as const).map(([value, label, description]) => (
-              <label key={value} className={`cursor-pointer rounded-2xl border p-4 transition ${submissionMode === value ? "border-moss-600 bg-moss-50" : "border-black/10 bg-stone-50"}`}>
-                <input className="sr-only" type="radio" name="submission-mode" value={value} checked={submissionMode === value} onChange={() => setSubmissionMode(value)} />
-                <span className="block font-bold">{label}</span>
-                <span className="mt-1 block text-sm text-stone-500">{description}</span>
-              </label>
-            ))}
+            {submissionModes.map(({ value, label, description }) => {
+              const disabled = value === "named" && !isAuthenticated;
+              return (
+                <label
+                  key={value}
+                  className={`rounded-2xl border p-4 transition ${
+                    disabled
+                      ? "cursor-not-allowed border-black/5 bg-stone-100 opacity-65"
+                      : submissionMode === value
+                        ? "cursor-pointer border-moss-600 bg-moss-50"
+                        : "cursor-pointer border-black/10 bg-stone-50"
+                  }`}
+                >
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="submission-mode"
+                    value={value}
+                    checked={submissionMode === value}
+                    disabled={disabled}
+                    onChange={() => setSubmissionMode(value)}
+                  />
+                  <span className="block font-bold">{label}</span>
+                  <span className="mt-1 block text-sm text-stone-500">{description}</span>
+                  {disabled && (
+                    <span className="mt-2 block text-xs font-semibold text-amber-700">
+                      Google 로그인 후 만들 수 있습니다.
+                    </span>
+                  )}
+                </label>
+              );
+            })}
           </div>
         </fieldset>
 
-        <button type="submit" className="primary-button w-full" disabled={loading || lines(options).length < 2 || lines(criteria).length < 1}>
+        <button
+          type="submit"
+          className="primary-button w-full"
+          disabled={
+            loading ||
+            lines(options).length < 2 ||
+            lines(criteria).length < 1 ||
+            (submissionMode === "named" && !isAuthenticated)
+          }
+        >
           {loading ? "방 만드는 중…" : "방 만들기"}
         </button>
       </form>

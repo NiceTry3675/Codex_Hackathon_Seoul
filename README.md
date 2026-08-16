@@ -53,8 +53,8 @@ Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통�
 
 - **계산과 이해의 분리**: 모든 수치는 사용자 입력 + 결정적 통계에서만 나옵니다. LLM은 자연어 구조화와 반론 생성만 담당하고, LLM이 실패해도 분석은 폴백으로 동작합니다.
 - **백엔드**: FastAPI + numpy. 로컬은 인메모리, 프로덕션은 DynamoDB로 방·제출 영속화. WebSocket 없이 polling.
-- **프런트엔드**: React (Vite) SPA — 방 만들기 / 의견 입력 / 제출 현황 / 분석 결과 4화면. 방 생성 시 질문·선택지·평가 기준을 직접 입력하고, 결과 화면의 가중치 슬라이더로 Flip Point를 라이브 시연.
-- **인증**: Google 로그인(ID 토큰을 `google-auth`로 서버 검증, HttpOnly 서명 쿠키 세션). 제출 자체는 익명 — 계정은 세션에만 사용합니다.
+- **프런트엔드**: React (Vite) SPA — 방 만들기 / 의견 입력 / 제출 현황 / 분석 결과 4화면. 방 생성 폼은 바로 시연 가능한 데모 예시값으로 시작하며, 결과 화면의 가중치 슬라이더로 Flip Point를 라이브 시연.
+- **인증**: Google 로그인(ID 토큰을 `google-auth`로 서버 검증, HttpOnly 서명 쿠키 세션). 실명 제출 방 생성은 로그인 사용자만 가능하며, 익명 제출 방은 로그인 없이 만들고 참여할 수 있습니다.
 - **배포**: 단일 Docker 이미지(React 빌드 + FastAPI 런타임) → ECR → App Runner, GitHub Actions 자동 배포 + 불변 롤백 태그.
 
 ## API 요약

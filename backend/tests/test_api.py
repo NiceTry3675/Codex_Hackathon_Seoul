@@ -7,7 +7,7 @@ import pytest
 
 import backend.main as main
 from backend.main import app, room_analysis_locks, rooms
-from backend.models import DefenseResolution, DevilsAdvocate, SubmissionCreate
+from backend.models import AuthUser, DefenseResolution, DevilsAdvocate, SubmissionCreate
 
 
 @pytest.fixture(autouse=True)
@@ -122,7 +122,19 @@ def test_room_status_never_exposes_individual_submissions(client: TestClient):
     }
 
 
-def test_named_room_requires_and_exposes_participant_names(client: TestClient):
+def test_named_room_requires_and_exposes_participant_names(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        main,
+        "user_from_request",
+        lambda _request: AuthUser(
+            google_sub="room-creator",
+            email="creator@example.com",
+            name="방장",
+        ),
+    )
     payload = room_payload()
     payload["submission_mode"] = "named"
     room = client.post("/api/rooms", json=payload).json()

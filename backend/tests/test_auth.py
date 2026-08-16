@@ -3,7 +3,7 @@ import pytest
 
 import backend.auth as auth
 import backend.main as main
-from backend.main import app
+from backend.main import app, room_analysis_locks, rooms
 from backend.models import AuthUser
 
 
@@ -12,6 +12,8 @@ TEST_SECRET = "test-session-secret-that-is-at-least-32-characters"
 
 @pytest.fixture(autouse=True)
 def clear_auth_environment(monkeypatch: pytest.MonkeyPatch):
+    rooms.clear()
+    room_analysis_locks.clear()
     for name in (
         "GOOGLE_CLIENT_ID",
         "SESSION_SECRET",
@@ -19,6 +21,9 @@ def clear_auth_environment(monkeypatch: pytest.MonkeyPatch):
         "SESSION_TTL_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
+    yield
+    rooms.clear()
+    room_analysis_locks.clear()
 
 
 @pytest.fixture
@@ -94,6 +99,34 @@ def test_logout_removes_the_session_cookie(
         "authenticated": False,
         "user": None,
     }
+
+
+def test_named_room_creation_requires_an_authenticated_session(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    payload = {
+        "question": "어떤 안을 선택할까요?",
+        "options": ["A", "B"],
+        "criteria": ["가치"],
+        "submission_mode": "named",
+    }
+
+    unauthenticated = client.post("/api/rooms", json=payload)
+
+    monkeypatch.setenv("SESSION_SECRET", TEST_SECRET)
+    client.cookies.set(
+        auth.SESSION_COOKIE_NAME,
+        auth.create_session_token(verified_user()),
+    )
+    authenticated = client.post("/api/rooms", json=payload)
+
+    assert unauthenticated.status_code == 401
+    assert unauthenticated.json()["detail"] == (
+        "authentication is required to create named rooms"
+    )
+    assert authenticated.status_code == 201
+    assert authenticated.json()["submission_mode"] == "named"
 
 
 def test_invalid_google_token_is_rejected_without_a_cookie(

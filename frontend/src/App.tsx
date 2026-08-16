@@ -241,7 +241,13 @@ function App() {
       )}
 
       <main>
-        {stage === "create" && <CreateRoomPage loading={busy} onCreate={createRoom} />}
+        {stage === "create" && (
+          <CreateRoomPage
+            isAuthenticated={authState.authenticated}
+            loading={busy}
+            onCreate={createRoom}
+          />
+        )}
         {stage === "submit" && (
           <SubmitPage room={room} loading={busy} onJoin={loadRoom} onSubmit={submit} />
         )}

@@ -96,14 +96,11 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 <p className="eyebrow">Room {room.code}</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight">{room.question}</h2>
               </div>
-              <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm text-moss-700">
-                <span aria-hidden="true">◉</span> 이름 없이 집계돼요
+              <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm font-semibold text-moss-700">
+                <span aria-hidden="true">◉</span> 익명 제출
               </div>
             </div>
-            <div className="mt-5 rounded-2xl border border-moss-100 bg-moss-50/70 p-4 text-sm leading-6 text-moss-700">
-              <strong>이름 없는 독립 입력</strong><br />
-              이름과 이메일은 저장하지 않으며, 제출 후에는 개인 답변이 아닌 집계 결과만 공개됩니다.
-            </div>
+            <p className="mt-5 text-sm leading-6 text-stone-500">작성자 정보는 수집하지 않으며, 개인 답변 대신 팀 전체의 분석 결과만 공유됩니다.</p>
           </section>
 
           <section className="card">
@@ -203,7 +200,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 rows={4}
                 maxLength={1000}
                 className="mt-2 w-full resize-y rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 leading-6"
-                placeholder="예: 발표 임팩트는 크지만 6시간 안에 구현할 수 있을지 걱정돼요."
+                placeholder="예: 새로운 접근은 매력적이지만, 구현 위험이 걱정돼요."
               />
               <span className="mt-1 block text-right text-xs text-stone-400">{reason.length}/1000</span>
             </label>
@@ -211,9 +208,9 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
 
           <div className="flex flex-col items-center pb-4 pt-2">
             <button type="submit" className="primary-button w-full max-w-sm" disabled={loading || completedScores !== totalScores}>
-              {loading ? "이름 없이 제출 중…" : "이름 없이 의견 제출하기"}
+              {loading ? "제출 중…" : "의견 제출하기"}
             </button>
-            <p className="mt-3 text-center text-xs text-stone-400">제출 후에는 내 답변도 따로 표시되지 않습니다.</p>
+            <p className="mt-3 text-center text-xs text-stone-400">제출 후에는 개인 답변이 아닌 팀 전체의 분석을 확인할 수 있어요.</p>
           </div>
         </form>
       )}

@@ -10,12 +10,12 @@ import type {
 export const DEFAULT_ROOM_CODE = "X7K2P9";
 
 const optionA = "A. AI 보안 도구";
-const optionB = "B. 팀 의사결정 도구";
+const optionB = "B. 의사결정 도구";
 const optionC = "C. 회의 요약 에이전트";
 
 let room: Room = {
   code: DEFAULT_ROOM_CODE,
-  question: "해커톤에서 어떤 아이디어를 만들까요?",
+  question: "회의에 무엇을 우선할까요?",
   options: [optionA, optionB, optionC],
   criteria: ["창의성", "구현 가능성", "발표 임팩트"],
   expected_members: 4,
@@ -69,14 +69,14 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     },
   ],
   discussion_agenda: [
-    "A를 6시간 안에 완성할 수 있는 최소 범위를 먼저 합의하세요.",
-    "구현 가능성에 29% 이상의 비중을 둘지 10분 동안 논의하세요.",
+    "A를 추진하기 위한 최소 조건을 먼저 합의하세요.",
+    "구현 가능성에 29% 이상의 비중을 둘지 논의하세요.",
   ],
   devils_advocate: {
     target: optionA,
     challenges: [
-      "구현 가능성 우려가 반복되는데, 핵심 기능 하나가 실패했을 때의 대안은 무엇인가요?",
-      "발표 임팩트는 완성된 데모를 전제로 합니다. 지금 범위가 그 전제를 지킬 수 있나요?",
+      "구현 가능성 우려가 반복되는데, 계획대로 진행되지 않을 때의 대안은 무엇인가요?",
+      "발표 임팩트가 기대만큼 나오지 않을 경우에도 이 선택이 설득력 있나요?",
     ],
   },
   mean_scores: {

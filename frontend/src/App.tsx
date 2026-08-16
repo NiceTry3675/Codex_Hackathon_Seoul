@@ -155,8 +155,8 @@ function App() {
       <header className="sticky top-0 z-30 border-b border-black/5 bg-[#f8f6f1]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:flex-nowrap sm:px-6">
           <button className="text-left" type="button" onClick={() => navigate("submit")}>
-            <span className="block text-lg font-bold tracking-[-0.04em]">Consensus</span>
-            <span className="hidden text-[11px] text-stone-500 sm:block">Agree less. Decide better.</span>
+            <span className="block text-lg font-bold tracking-[-0.04em]">싱큐</span>
+            <span className="hidden text-[11px] text-stone-500 sm:block">합의보다, 더 나은 선택.</span>
           </button>
 
           <nav className="flex items-center rounded-full border border-black/5 bg-white p-1 shadow-sm" aria-label="화면 이동">
@@ -268,7 +268,7 @@ function App() {
       </main>
 
       <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-stone-500 sm:px-6">
-        Consensus는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줍니다.
+        싱큐는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줍니다.
       </footer>
     </div>
   );

@@ -98,7 +98,7 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
       <section className="border-b border-black/5 bg-sand">
         <div className="mx-auto max-w-5xl px-4 py-14 text-center sm:px-6 sm:py-20">
           <p className="eyebrow">Step 03 · Decision stress test</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">합의보다, 견고함을 봅니다.</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">합의보다, 더 나은 선택.</h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-stone-600">
             현재 1위는 <strong className="text-ink">{analysis.current_winner}</strong>입니다. 하지만 조건이 조금만 달라져도 같은 결과일까요?
           </p>
@@ -315,8 +315,8 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
         </section>
 
         <div className="py-5 text-center">
-          <p className="text-2xl font-semibold tracking-[-0.04em]">Agree less. Decide better.</p>
-          <p className="mt-2 text-sm text-stone-500">Consensus는 결정을 추천하지 않습니다. 결정의 견고성을 보여줄 뿐입니다.</p>
+          <p className="text-2xl font-semibold tracking-[-0.04em]">싱큐 · 합의보다, 더 나은 선택.</p>
+          <p className="mt-2 text-sm text-stone-500">싱큐는 결정을 추천하지 않습니다. 결정의 견고성을 보여줄 뿐입니다.</p>
         </div>
       </div>
     </div>

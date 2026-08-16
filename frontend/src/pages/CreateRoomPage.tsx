@@ -13,9 +13,9 @@ const lines = (value: string) =>
     .filter(Boolean);
 
 function CreateRoomPage({ loading, onCreate }: CreateRoomPageProps) {
-  const [question, setQuestion] = useState("6시간 해커톤에서 어떤 아이디어를 만들까요?");
-  const [options, setOptions] = useState("A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구");
-  const [criteria, setCriteria] = useState("창의성\n구현 가능성\n발표 임팩트");
+  const [question, setQuestion] = useState("");
+  const [options, setOptions] = useState("");
+  const [criteria, setCriteria] = useState("");
   const [expectedMembers, setExpectedMembers] = useState(4);
   const [submissionMode, setSubmissionMode] = useState<"anonymous" | "named">("anonymous");
 
@@ -41,17 +41,36 @@ function CreateRoomPage({ loading, onCreate }: CreateRoomPageProps) {
       <form onSubmit={submit} className="card mx-auto mt-10 max-w-2xl space-y-6">
         <label className="block">
           <span className="mb-2 block text-sm font-bold text-stone-600">결정할 질문</span>
-          <input className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={question} onChange={(event) => setQuestion(event.target.value)} required maxLength={500} />
+          <input
+            className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 placeholder:text-stone-400"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="예: 6시간 해커톤에서 어떤 아이디어를 만들까요?"
+            required
+            maxLength={500}
+          />
         </label>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-stone-600">선택지 · 한 줄에 하나</span>
-            <textarea className="min-h-36 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={options} onChange={(event) => setOptions(event.target.value)} required />
+            <textarea
+              className="min-h-36 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 placeholder:text-stone-400"
+              value={options}
+              onChange={(event) => setOptions(event.target.value)}
+              placeholder={"예: A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구"}
+              required
+            />
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-stone-600">평가 기준 · 한 줄에 하나</span>
-            <textarea className="min-h-36 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={criteria} onChange={(event) => setCriteria(event.target.value)} required />
+            <textarea
+              className="min-h-36 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 placeholder:text-stone-400"
+              value={criteria}
+              onChange={(event) => setCriteria(event.target.value)}
+              placeholder={"예: 창의성\n구현 가능성\n발표 임팩트"}
+              required
+            />
           </label>
         </div>
 

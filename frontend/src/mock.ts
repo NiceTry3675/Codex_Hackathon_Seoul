@@ -19,6 +19,8 @@ let room: Room = {
   options: [optionA, optionB, optionC],
   criteria: ["창의성", "구현 가능성", "발표 임팩트"],
   expected_members: 4,
+  submission_mode: "anonymous",
+  participant_names: [],
   submission_count: 3,
   is_complete: false,
 };
@@ -97,6 +99,8 @@ export const mockApi = {
       options: payload.options,
       criteria: payload.criteria,
       expected_members: payload.expected_members ?? 4,
+      submission_mode: payload.submission_mode ?? "anonymous",
+      participant_names: [],
       submission_count: 0,
       is_complete: false,
     };
@@ -116,6 +120,10 @@ export const mockApi = {
     room = {
       ...room,
       submission_count: Math.min(room.expected_members, room.submission_count + 1),
+      participant_names:
+        room.submission_mode === "named" && _payload.participant_name
+          ? [...room.participant_names, _payload.participant_name]
+          : room.participant_names,
       is_complete: room.submission_count + 1 >= room.expected_members,
     };
     return {

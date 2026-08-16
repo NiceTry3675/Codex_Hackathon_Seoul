@@ -14,7 +14,7 @@
 원칙:
 - Consensus는 결정을 추천하지 않는다. 결정의 견고성을 보여줄 뿐이다.
 - 계산은 Python(통계), 의미 이해는 GPT. GPT는 숫자를 만들지 않는다.
-- 입력은 **익명**. 집계 결과만 공개한다. (숨은 갈등이 드러나는 전제 조건)
+- 방 생성자가 **익명 또는 실명 제출**을 선택한다. 개인 점수·의견은 어느 모드에서도 공개하지 않는다.
 
 ---
 
@@ -27,7 +27,7 @@
 
 배포: Docker 단일 컨테이너 (FastAPI가 React 빌드 정적 서빙)
       → AWS App Runner (권장) 또는 EC2
-저장: 인메모리 dict (DB 없음, 서버 재시작 시 초기화 허용)
+저장: 로컬은 인메모리 dict, App Runner는 DynamoDB (`consensus-rooms`)
 ```
 
 - 단일 컨테이너, 단일 프로세스. 해커톤 범위에서 DB/Redis/큐 금지.
@@ -38,7 +38,7 @@
 ## 3. 데이터 모델 (인메모리)
 
 ```python
-rooms: dict[str, Room]
+rooms: dict[str, Room]  # 로컬 fallback; 배포 환경은 DynamoDB
 
 Room:
   code: str                # "X7K2P9"
@@ -49,7 +49,8 @@ Room:
   submissions: list[Submission]
 
 Submission:
-  id: str                  # uuid (익명 — 이름 저장 안 함)
+  id: str                  # uuid
+  participant_name: str?   # 실명 방에서만 저장
   scores: dict[option, dict[criterion, int]]   # 1~5
   weights: dict[criterion, int]                # 1~10 슬라이더
   first_choice: str
@@ -156,7 +157,7 @@ FastAPI 로직을 그대로 노출: `submit_preference()`, `analyze_consensus()`
 
 ## 8. 프론트엔드 (React + Tailwind, 3화면)
 
-1. **입력**: 방 코드 참여 → 옵션별 기준 점수(1~5) + 기준 중요도 슬라이더(1~10) + 이유 텍스트. 익명 안내 문구 필수.
+1. **입력**: 방 만들기/코드 참여 → 옵션별 기준 점수(1~5) + 기준 중요도 슬라이더(1~10) + 이유 텍스트. 방 생성자가 익명/실명 모드를 선택한다.
 2. **대기/현황**: 제출 인원 수만 표시 (개별 답변 비공개). 전원 제출 시 분석 버튼 활성화.
 3. **결과** ⭐: 득표 → Stability 게이지 → Hidden Conflict → Flip Point → Robust Choice → Discussion Agenda + Devil's Advocate 반론 순서로 스크롤 스토리텔링. 가중치 슬라이더 라이브 조작 → 순위 뒤집힘 시연 가능하게.
 
@@ -187,7 +188,7 @@ t3.small + docker run, 보안그룹 80/443 오픈, 필요 시 Caddy로 HTTPS.
 
 ### 주의
 
-- 인메모리 저장이므로 **인스턴스 1개 고정** (스케일아웃 금지 — App Runner min/max instance = 1).
+- DynamoDB로 room을 영속화한다. 데모 비용과 동작 예측성을 위해 App Runner min/max instance는 1로 유지한다.
 - 배포는 코딩 완료 기다리지 말고 **2시간 차에 hello-world 컨테이너로 먼저** 파이프라인 검증.
 
 ---

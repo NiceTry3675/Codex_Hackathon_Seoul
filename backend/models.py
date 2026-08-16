@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 Score = Annotated[int, Field(ge=1, le=5)]
 Weight = Annotated[int, Field(ge=1, le=10)]
 AgreementLevel = Literal["HIGH", "MID", "LOW"]
+SubmissionMode = Literal["anonymous", "named"]
 
 
 class ApiModel(BaseModel):
@@ -23,6 +24,7 @@ class ParsedOpinion(ApiModel):
 
 
 class SubmissionCreate(ApiModel):
+    participant_name: str | None = Field(default=None, max_length=100)
     scores: dict[str, dict[str, Score]]
     weights: dict[str, Weight]
     first_choice: str = Field(min_length=1, max_length=200)
@@ -32,6 +34,14 @@ class SubmissionCreate(ApiModel):
     @classmethod
     def strip_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("participant_name")
+    @classmethod
+    def strip_participant_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class Submission(SubmissionCreate):
@@ -49,6 +59,7 @@ class RoomCreate(ApiModel):
     options: list[str] = Field(min_length=2, max_length=10)
     criteria: list[str] = Field(min_length=1, max_length=10)
     expected_members: int = Field(default=4, ge=1, le=100)
+    submission_mode: SubmissionMode = "anonymous"
 
     @field_validator("question")
     @classmethod
@@ -75,6 +86,7 @@ class Room(ApiModel):
     options: list[str]
     criteria: list[str]
     expected_members: int = 4
+    submission_mode: SubmissionMode = "anonymous"
     submissions: list[Submission] = Field(default_factory=list)
     devils_advocate: DevilsAdvocate | None = None
     devils_advocate_generated: bool = False
@@ -87,6 +99,8 @@ class RoomResponse(ApiModel):
     options: list[str]
     criteria: list[str]
     expected_members: int
+    submission_mode: SubmissionMode
+    participant_names: list[str] = Field(default_factory=list)
     submission_count: int
     is_complete: bool
 

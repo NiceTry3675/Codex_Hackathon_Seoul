@@ -2,7 +2,7 @@
 
 > Agree less. Decide better.
 
-익명 입력을 바탕으로 팀 결정의 안정성, 숨은 갈등, 뒤집힘 조건을 보여주는 해커톤 MVP입니다.
+익명 또는 실명 입력을 바탕으로 팀 결정의 안정성, 숨은 갈등, 뒤집힘 조건을 보여주는 해커톤 MVP입니다.
 
 현재 저장소는 팀원이 각 모듈을 바로 이어서 개발할 수 있는 **작동 가능한 초안 골격**을 목표로 합니다. 제품 배경은 [`CONTEXT.md`](CONTEXT.md), 구현 계약은 [`SPEC.md`](SPEC.md), 역할과 일정은 [`PLAN.md`](PLAN.md)를 참고하세요.
 
@@ -86,7 +86,8 @@ docker run --rm -p 8080:8080 --env-file .env consensus
 
 ```text
 backend/
-  main.py              FastAPI 라우터와 인메모리 room 저장소
+  main.py              FastAPI 라우터
+  storage.py           DynamoDB room 저장소와 인메모리 fallback
   models.py            요청 및 저장 모델
   stats.py             numpy 통계 엔진
   llm.py               선택적 GPT 구조화/반론 경계
@@ -105,10 +106,10 @@ Dockerfile              React 빌드 + FastAPI 런타임
 |---|---|---|
 | `POST` | `/api/rooms` | 방 생성 |
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
-| `POST` | `/api/rooms/{code}/submit` | 익명 의견 제출 |
+| `POST` | `/api/rooms/{code}/submit` | 익명 또는 실명 의견 제출 |
 | `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 |
 
-저장은 프로세스 메모리만 사용하므로 서버 재시작 시 초기화됩니다. DB, 로그인, WebSocket은 이 MVP 범위에 포함하지 않습니다.
+로컬은 프로세스 메모리를 사용하고, App Runner에서는 DynamoDB로 방과 제출을 영속화합니다. 로그인과 WebSocket은 이 MVP 범위에 포함하지 않습니다.
 
 ## 다음 작업 우선순위
 

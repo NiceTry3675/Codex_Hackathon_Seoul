@@ -24,6 +24,7 @@ from .models import (
     SubmissionCreate,
     SubmitResponse,
 )
+from .storage import RoomStore
 from .stats import analyze_room
 
 
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 rooms: dict[str, Room] = {}
+room_store = RoomStore(rooms)
 rooms_lock = Lock()
 room_analysis_locks: dict[str, Lock] = {}
 ROOM_CODE_ALPHABET = string.ascii_uppercase + string.digits
@@ -46,14 +48,13 @@ ROOM_CODE_ALPHABET = string.ascii_uppercase + string.digits
 def _new_room_code() -> str:
     while True:
         code = "".join(secrets.choice(ROOM_CODE_ALPHABET) for _ in range(6))
-        if code not in rooms:
+        if room_store.get(code) is None:
             return code
 
 
 def _get_room(code: str) -> Room:
     normalized = code.upper()
-    with rooms_lock:
-        room = rooms.get(normalized)
+    room = room_store.get(normalized)
     if room is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="room not found")
     return room
@@ -68,6 +69,16 @@ def _room_response(room: Room) -> RoomResponse:
         options=room.options,
         criteria=room.criteria,
         expected_members=room.expected_members,
+        submission_mode=room.submission_mode,
+        participant_names=(
+            [
+                submission.participant_name
+                for submission in room.submissions
+                if submission.participant_name is not None
+            ]
+            if room.submission_mode == "named"
+            else []
+        ),
         submission_count=submission_count,
         is_complete=submission_count >= room.expected_members,
     )
@@ -144,6 +155,7 @@ def _get_devils_advocate(room: Room, result: dict) -> None:
             room.devils_advocate_source = "live"
 
         room.devils_advocate_generated = True
+        room_store.save(room)
         logger.info(
             "Devil's Advocate ready source=%s room=%s",
             room.devils_advocate_source,
@@ -160,9 +172,11 @@ def health() -> HealthResponse:
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 def create_room(payload: RoomCreate) -> RoomResponse:
     with rooms_lock:
-        code = _new_room_code()
-        room = Room(code=code, submissions=[], **payload.model_dump())
-        rooms[code] = room
+        while True:
+            code = _new_room_code()
+            room = Room(code=code, submissions=[], **payload.model_dump())
+            if room_store.create(room):
+                break
         room_analysis_locks[code] = Lock()
     return _room_response(room)
 
@@ -184,12 +198,21 @@ def submit_opinion(
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
-    with rooms_lock:
-        if len(room.submissions) >= room.expected_members:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="room is full",
-            )
+    if len(room.submissions) >= room.expected_members:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="room is full",
+        )
+    if room.submission_mode == "named" and payload.participant_name is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="participant_name is required for named rooms",
+        )
+    if room.submission_mode == "anonymous" and payload.participant_name is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="participant_name must be omitted for anonymous rooms",
+        )
     _require_exact_keys(set(payload.scores), room.options, "scores")
     _require_exact_keys(set(payload.weights), room.criteria, "weights")
     for option, criterion_scores in payload.scores.items():
@@ -206,14 +229,29 @@ def submit_opinion(
         parsed=parsed,
         **payload.model_dump(),
     )
+
     with rooms_lock:
+        submission_lock = room_analysis_locks.setdefault(code.upper(), Lock())
+
+    with submission_lock:
+        room = _get_room(code)
         if len(room.submissions) >= room.expected_members:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="room is full",
             )
+
+        if payload.participant_name is not None and any(
+            item.participant_name == payload.participant_name for item in room.submissions
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="participant name already submitted",
+            )
+
         room.submissions.append(submission)
         submission_count = len(room.submissions)
+        room_store.save(room)
     return SubmitResponse(
         id=submission.id,
         submission_count=submission_count,

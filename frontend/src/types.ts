@@ -6,6 +6,8 @@ export interface Room {
   options: string[];
   criteria: string[];
   expected_members: number;
+  submission_mode: "anonymous" | "named";
+  participant_names: string[];
   submission_count: number;
   is_complete: boolean;
 }
@@ -15,11 +17,13 @@ export interface CreateRoomPayload {
   options: string[];
   criteria: string[];
   expected_members?: number;
+  submission_mode?: "anonymous" | "named";
 }
 
 export type CreateRoomResponse = Room;
 
 export interface SubmissionPayload {
+  participant_name?: string;
   scores: Record<string, Record<string, number>>;
   weights: Record<string, number>;
   first_choice: string;

@@ -65,6 +65,15 @@ function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProp
               </span>
             ))}
           </div>
+          {room.submission_mode === "named" && room.participant_names.length > 0 && (
+            <div className="mt-5 flex flex-wrap justify-center gap-2" aria-label="제출 완료자">
+              {room.participant_names.map((name) => (
+                <span key={name} className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-moss-700 shadow-sm">
+                  {name} ✓
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-center gap-2 text-sm text-stone-500">

@@ -25,6 +25,8 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
   const [weights, setWeights] = useState<SubmissionPayload["weights"]>({});
   const [firstChoice, setFirstChoice] = useState("");
   const [reason, setReason] = useState("");
+  const [participantName, setParticipantName] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!room) return;
@@ -33,6 +35,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
     setWeights(Object.fromEntries(room.criteria.map((criterion) => [criterion, 5])));
     setFirstChoice(room.options[0] ?? "");
     setReason("");
+    setParticipantName("");
   }, [room]);
 
   const completedScores = useMemo(() => {
@@ -54,7 +57,21 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
   const submitForm = (event: FormEvent) => {
     event.preventDefault();
     if (!room || !firstChoice || completedScores !== totalScores) return;
-    void onSubmit({ scores, weights, first_choice: firstChoice, reason: reason.trim() });
+    if (room.submission_mode === "named" && !participantName.trim()) return;
+    void onSubmit({
+      scores,
+      weights,
+      first_choice: firstChoice,
+      reason: reason.trim(),
+      ...(room.submission_mode === "named" ? { participant_name: participantName.trim() } : {}),
+    });
+  };
+
+  const copyCode = async () => {
+    if (!room) return;
+    await navigator.clipboard.writeText(room.code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -96,12 +113,30 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 <p className="eyebrow">Room {room.code}</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight">{room.question}</h2>
               </div>
-              <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm font-semibold text-moss-700">
-                <span aria-hidden="true">◉</span> 익명 제출
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void copyCode()} className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold">
+                  {copied ? "복사됨" : `코드 ${room.code} 복사`}
+                </button>
+                <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm font-semibold text-moss-700">
+                  <span aria-hidden="true">◉</span> {room.submission_mode === "named" ? "실명 제출" : "익명 제출"}
+                </div>
               </div>
             </div>
-            <p className="mt-5 text-sm leading-6 text-stone-500">작성자 정보는 수집하지 않으며, 개인 답변 대신 팀 전체의 분석 결과만 공유됩니다.</p>
+            <p className="mt-5 text-sm leading-6 text-stone-500">
+              {room.submission_mode === "named"
+                ? "이름은 제출 완료 여부에만 표시되며 개인 점수와 의견은 공개하지 않습니다."
+                : "작성자 정보는 수집하지 않으며, 개인 답변 대신 팀 전체의 분석 결과만 공유됩니다."}
+            </p>
           </section>
+
+          {room.submission_mode === "named" && (
+            <section className="card">
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-stone-600">이름</span>
+                <input value={participantName} onChange={(event) => setParticipantName(event.target.value)} maxLength={100} required className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" placeholder="홍길동" />
+              </label>
+            </section>
+          )}
 
           <section className="card">
             <div className="flex items-end justify-between gap-4">
@@ -207,7 +242,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
           </section>
 
           <div className="flex flex-col items-center pb-4 pt-2">
-            <button type="submit" className="primary-button w-full max-w-sm" disabled={loading || completedScores !== totalScores}>
+            <button type="submit" className="primary-button w-full max-w-sm" disabled={loading || completedScores !== totalScores || (room.submission_mode === "named" && !participantName.trim())}>
               {loading ? "제출 중…" : "의견 제출하기"}
             </button>
             <p className="mt-3 text-center text-xs text-stone-400">제출 후에는 개인 답변이 아닌 팀 전체의 분석을 확인할 수 있어요.</p>

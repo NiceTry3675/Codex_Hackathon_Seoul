@@ -115,9 +115,45 @@ def test_room_status_never_exposes_individual_submissions(client: TestClient):
         "options",
         "criteria",
         "expected_members",
+        "submission_mode",
+        "participant_names",
         "submission_count",
         "is_complete",
     }
+
+
+def test_named_room_requires_and_exposes_participant_names(client: TestClient):
+    payload = room_payload()
+    payload["submission_mode"] = "named"
+    room = client.post("/api/rooms", json=payload).json()
+
+    missing_name = client.post(
+        f"/api/rooms/{room['code']}/submit",
+        json=submission_payload(),
+    )
+    named_payload = submission_payload()
+    named_payload["participant_name"] = " 홍길동 "
+    submitted = client.post(
+        f"/api/rooms/{room['code']}/submit",
+        json=named_payload,
+    )
+    status_response = client.get(f"/api/rooms/{room['code']}").json()
+
+    assert missing_name.status_code == 422
+    assert submitted.status_code == 201
+    assert status_response["submission_mode"] == "named"
+    assert status_response["participant_names"] == ["홍길동"]
+
+
+def test_anonymous_room_rejects_and_never_exposes_names(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    payload = submission_payload()
+    payload["participant_name"] = "노출되면 안 됨"
+
+    response = client.post(f"/api/rooms/{room['code']}/submit", json=payload)
+
+    assert response.status_code == 422
+    assert client.get(f"/api/rooms/{room['code']}").json()["participant_names"] == []
 
 
 def test_submission_keys_must_match_room(client: TestClient):

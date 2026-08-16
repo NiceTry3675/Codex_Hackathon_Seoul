@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { api, USE_MOCK_API } from "./api";
 import { DEFAULT_ROOM_CODE } from "./mock";
+import CreateRoomPage from "./pages/CreateRoomPage";
 import ResultsPage from "./pages/ResultsPage";
 import SubmitPage from "./pages/SubmitPage";
 import WaitingPage from "./pages/WaitingPage";
-import type { AnalysisResponse, Room, SubmissionPayload } from "./types";
+import type { AnalysisResponse, CreateRoomPayload, Room, SubmissionPayload } from "./types";
 
-type Stage = "submit" | "waiting" | "results";
+type Stage = "create" | "submit" | "waiting" | "results";
 
 const stages: Array<{ id: Stage; label: string }> = [
+  { id: "create", label: "방 만들기" },
   { id: "submit", label: "의견 입력" },
   { id: "waiting", label: "제출 현황" },
   { id: "results", label: "분석 결과" },
@@ -54,6 +56,23 @@ function App() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "의견을 제출하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createRoom = async (payload: CreateRoomPayload) => {
+    setBusy(true);
+    setError("");
+    try {
+      const nextRoom = await api.createRoom(payload);
+      setRoom(nextRoom);
+      setAnalysis(undefined);
+      setStage("submit");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "방을 만들지 못했습니다.");
+      throw cause;
     } finally {
       setBusy(false);
     }
@@ -137,6 +156,7 @@ function App() {
       )}
 
       <main>
+        {stage === "create" && <CreateRoomPage loading={busy} onCreate={createRoom} />}
         {stage === "submit" && (
           <SubmitPage room={room} loading={busy} onJoin={loadRoom} onSubmit={submit} />
         )}

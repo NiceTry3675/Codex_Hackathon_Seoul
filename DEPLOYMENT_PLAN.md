@@ -32,7 +32,8 @@
 | 이미지 저장소 | Private ECR, scan-on-push, immutable tag | 이미지 추적과 롤백이 쉬움 |
 | 이미지 태그 | Git SHA (`consensus:<sha>`) | `latest` 덮어쓰기 방지, 직전 정상 이미지로 즉시 롤백 가능 |
 | 자동 배포 | 끔 | 데모 직전 예기치 않은 재배포와 추가 비용 방지 |
-| 인스턴스 | 1 vCPU / 2 GB, min=1, max=1 | 인메모리 room이므로 다중 인스턴스 금지 |
+| 인스턴스 | 1 vCPU / 2 GB, min=1, max=1 | DynamoDB 영속화 후에도 데모 비용과 동작 예측성을 위해 1개 유지 |
+| room 저장소 | DynamoDB `consensus-rooms`, on-demand | App Runner 교체·재시작 후에도 방과 제출을 유지 |
 | 상태 확인 | HTTP `/api/health`, port `8080` | 애플리케이션 준비 상태를 직접 확인 |
 | OpenAI 키 | App Runner 평문 runtime environment variable | 해커톤 속도를 위해 사용자가 확정; 저장소·이미지·CLI 로그에는 넣지 않음 |
 | OpenAI 모델 | `gpt-5.6-sol` | 최종 데모용 고정 모델 ID |
@@ -105,7 +106,7 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
 4. service가 `RUNNING`이 되고 health가 안정될 때까지 기다린다.
 5. 자동 배포는 계속 끈 상태로 유지한다.
 
-**롤백:** 직전 정상 SHA로 App Runner source image를 되돌린다. 배포 시 인메모리 room은 사라지므로 rollback 후 데모 데이터를 다시 적재한다.
+**롤백:** 직전 정상 SHA로 App Runner source image를 되돌린다. room은 DynamoDB에 유지되지만 스키마 호환성을 확인하고 필요하면 데모 데이터를 다시 적재한다.
 
 ### Phase 4 — 배포본 E2E 및 데모 데이터 적재 (20분)
 
@@ -150,16 +151,16 @@ HTTPS 설정이 15분 안에 끝나지 않으면 발표용으로 HTTP URL을 우
 
 ## 4. 데모 운영 리스크
 
-- App Runner 배포/업데이트는 컨테이너를 교체하므로 기존 room 데이터가 사라진다. 최종 배포 뒤에만 데모 데이터를 적재한다.
+- App Runner 배포/업데이트가 컨테이너를 교체해도 DynamoDB의 room 데이터는 유지된다.
 - App Runner는 배포 중 일시적으로 용량을 추가할 수 있다. 발표 중 배포하지 않는다.
 - `OPENAI_API_KEY`가 없어도 핵심 통계 경로는 동작한다. GPT 장애 때문에 배포를 되돌리지 않는다.
 - mock build는 E2E 성공처럼 보일 수 있으므로 화면의 `LIVE API` 배지를 필수 검증한다.
-- room은 메모리 저장이므로 min/max instance를 반드시 1로 고정한다.
+- room은 DynamoDB에 저장하며 App Runner min/max instance는 데모 운영 정책상 1로 고정한다.
 
 ## 5. 종료 후 정리
 
 발표 종료 후 24시간 유지한다. 필요한 URL·로그·분석 JSON을 보관한 뒤 App Runner service,
-ECR images/repository, autoscaling configuration, 전용 ECR access role, 생성된 EC2 fallback
+DynamoDB table, ECR images/repository, autoscaling configuration, 전용 ECR access/instance role, 생성된 EC2 fallback
 자원을 제거한다. 사용자가 확정한 정책에 따라 OpenAI API 키 자체는 폐기하거나 교체하지 않는다.
 
 ## 6. 확정된 사용자 결정

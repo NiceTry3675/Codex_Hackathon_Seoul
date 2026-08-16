@@ -1,0 +1,224 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { USE_MOCK_API } from "../api";
+import { DEFAULT_ROOM_CODE } from "../mock";
+import type { Room, SubmissionPayload } from "../types";
+
+interface SubmitPageProps {
+  room?: Room;
+  loading: boolean;
+  onJoin: (code: string) => Promise<void>;
+  onSubmit: (payload: SubmissionPayload) => Promise<void>;
+}
+
+function createInitialScores(room: Room): SubmissionPayload["scores"] {
+  return Object.fromEntries(
+    room.options.map((option) => [
+      option,
+      Object.fromEntries(room.criteria.map((criterion) => [criterion, 3])),
+    ]),
+  );
+}
+
+function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
+  const [code, setCode] = useState(room?.code ?? (USE_MOCK_API ? DEFAULT_ROOM_CODE : ""));
+  const [scores, setScores] = useState<SubmissionPayload["scores"]>({});
+  const [weights, setWeights] = useState<SubmissionPayload["weights"]>({});
+  const [firstChoice, setFirstChoice] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (!room) return;
+    setCode(room.code);
+    setScores(createInitialScores(room));
+    setWeights(Object.fromEntries(room.criteria.map((criterion) => [criterion, 5])));
+    setFirstChoice(room.options[0] ?? "");
+    setReason("");
+  }, [room]);
+
+  const completedScores = useMemo(() => {
+    if (!room) return 0;
+    return room.options.reduce(
+      (total, option) =>
+        total + room.criteria.filter((criterion) => scores[option]?.[criterion]).length,
+      0,
+    );
+  }, [room, scores]);
+
+  const totalScores = room ? room.options.length * room.criteria.length : 0;
+
+  const joinRoom = (event: FormEvent) => {
+    event.preventDefault();
+    void onJoin(code).catch(() => undefined);
+  };
+
+  const submitForm = (event: FormEvent) => {
+    event.preventDefault();
+    if (!room || !firstChoice || completedScores !== totalScores) return;
+    void onSubmit({ scores, weights, first_choice: firstChoice, reason: reason.trim() });
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
+      <section className="mx-auto max-w-2xl text-center">
+        <p className="eyebrow">Step 01 · Private input</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">먼저, 각자의 판단을 남겨요.</h1>
+        <p className="mx-auto mt-4 max-w-xl leading-7 text-stone-600">
+          대화 전에 독립적으로 평가하면 목소리가 큰 사람의 의견에 끌려가는 것을 줄일 수 있습니다.
+        </p>
+      </section>
+
+      <form onSubmit={joinRoom} className="card mx-auto mt-10 flex max-w-xl flex-col gap-3 sm:flex-row">
+        <label className="flex-1">
+          <span className="mb-2 block text-xs font-bold text-stone-500">6자리 방 코드</span>
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase().slice(0, 6))}
+            className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-mono text-lg font-bold uppercase tracking-[0.2em]"
+            placeholder="X7K2P9"
+            aria-label="방 코드"
+            minLength={6}
+            maxLength={6}
+            required
+          />
+        </label>
+        <button type="submit" className="primary-button self-end" disabled={loading || code.length !== 6}>
+          {loading ? "확인 중…" : "방 참여하기"}
+        </button>
+      </form>
+
+      {!room ? (
+        <div className="mt-12 text-center text-sm text-stone-500">방 코드를 입력해 주세요.</div>
+      ) : (
+        <form onSubmit={submitForm} className="mt-8 space-y-6">
+          <section className="card overflow-hidden">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="eyebrow">Room {room.code}</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">{room.question}</h2>
+              </div>
+              <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm text-moss-700">
+                <span aria-hidden="true">◉</span> 이름 없이 집계돼요
+              </div>
+            </div>
+            <div className="mt-5 rounded-2xl border border-moss-100 bg-moss-50/70 p-4 text-sm leading-6 text-moss-700">
+              <strong>이름 없는 독립 입력</strong><br />
+              이름과 이메일은 저장하지 않으며, 제출 후에는 개인 답변이 아닌 집계 결과만 공개됩니다.
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="eyebrow">Score each option</p>
+                <h2 className="section-title">옵션을 기준별로 평가해 주세요.</h2>
+              </div>
+              <span className="shrink-0 text-sm font-semibold text-stone-500">{completedScores}/{totalScores}</span>
+            </div>
+            <p className="mt-3 text-sm text-stone-500">1점은 매우 낮음, 5점은 매우 높음입니다.</p>
+
+            <div className="mt-7 space-y-4">
+              {room.options.map((option) => (
+                <div key={option} className="rounded-2xl border border-black/5 bg-stone-50/70 p-4 sm:p-5">
+                  <h3 className="font-semibold">{option}</h3>
+                  <div className="mt-4 space-y-4">
+                    {room.criteria.map((criterion) => (
+                      <div key={criterion} className="grid items-center gap-3 sm:grid-cols-[1fr_auto]">
+                        <span className="text-sm text-stone-600">{criterion}</span>
+                        <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label={`${option} ${criterion} 점수`}>
+                          {[1, 2, 3, 4, 5].map((score) => {
+                            const selected = scores[option]?.[criterion] === score;
+                            return (
+                              <button
+                                key={score}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                onClick={() =>
+                                  setScores((current) => ({
+                                    ...current,
+                                    [option]: { ...current[option], [criterion]: score },
+                                  }))
+                                }
+                                className={`h-10 w-10 rounded-xl text-sm font-bold transition sm:h-11 sm:w-11 ${
+                                  selected
+                                    ? "bg-ink text-white shadow-sm"
+                                    : "border border-black/10 bg-white text-stone-500 hover:border-moss-500"
+                                }`}
+                              >
+                                {score}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <p className="eyebrow">What matters</p>
+            <h2 className="section-title">기준의 중요도는 얼마인가요?</h2>
+            <p className="mt-3 text-sm text-stone-500">개인별 중요도는 팀 평균으로 정규화됩니다.</p>
+            <div className="mt-7 space-y-6">
+              {room.criteria.map((criterion) => (
+                <label key={criterion} className="block">
+                  <span className="flex items-center justify-between text-sm font-semibold">
+                    {criterion}
+                    <output className="rounded-lg bg-moss-50 px-2.5 py-1 text-moss-700">{weights[criterion] ?? 5}/10</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={weights[criterion] ?? 5}
+                    onChange={(event) => setWeights((current) => ({ ...current, [criterion]: Number(event.target.value) }))}
+                    className="mt-3 h-2 w-full cursor-pointer"
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <label className="block">
+              <span className="eyebrow">Your first choice</span>
+              <span className="section-title block">지금 하나를 고른다면?</span>
+              <select
+                value={firstChoice}
+                onChange={(event) => setFirstChoice(event.target.value)}
+                className="mt-5 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3"
+                required
+              >
+                {room.options.map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="mt-6 block">
+              <span className="text-sm font-semibold">그렇게 생각한 이유 <span className="font-normal text-stone-400">(선택)</span></span>
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={4}
+                maxLength={1000}
+                className="mt-2 w-full resize-y rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 leading-6"
+                placeholder="예: 발표 임팩트는 크지만 6시간 안에 구현할 수 있을지 걱정돼요."
+              />
+              <span className="mt-1 block text-right text-xs text-stone-400">{reason.length}/1000</span>
+            </label>
+          </section>
+
+          <div className="flex flex-col items-center pb-4 pt-2">
+            <button type="submit" className="primary-button w-full max-w-sm" disabled={loading || completedScores !== totalScores}>
+              {loading ? "이름 없이 제출 중…" : "이름 없이 의견 제출하기"}
+            </button>
+            <p className="mt-3 text-center text-xs text-stone-400">제출 후에는 내 답변도 따로 표시되지 않습니다.</p>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+export default SubmitPage;

@@ -1,0 +1,172 @@
+import { useEffect, useState } from "react";
+import { api, USE_MOCK_API } from "./api";
+import { DEFAULT_ROOM_CODE } from "./mock";
+import ResultsPage from "./pages/ResultsPage";
+import SubmitPage from "./pages/SubmitPage";
+import WaitingPage from "./pages/WaitingPage";
+import type { AnalysisResponse, Room, SubmissionPayload } from "./types";
+
+type Stage = "submit" | "waiting" | "results";
+
+const stages: Array<{ id: Stage; label: string }> = [
+  { id: "submit", label: "의견 입력" },
+  { id: "waiting", label: "제출 현황" },
+  { id: "results", label: "분석 결과" },
+];
+
+function App() {
+  const [stage, setStage] = useState<Stage>("submit");
+  const [room, setRoom] = useState<Room>();
+  const [analysis, setAnalysis] = useState<AnalysisResponse>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadRoom = async (code: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      const nextRoom = await api.getRoom(code.trim().toUpperCase());
+      setRoom(nextRoom);
+      setAnalysis(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "방 정보를 불러오지 못했습니다.");
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (USE_MOCK_API) {
+      void loadRoom(DEFAULT_ROOM_CODE).catch(() => undefined);
+    }
+  }, []);
+
+  const submit = async (payload: SubmissionPayload) => {
+    if (!room) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.submitOpinion(room.code, payload);
+      const nextRoom = await api.getRoom(room.code);
+      setRoom(nextRoom);
+      setStage("waiting");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "의견을 제출하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openAnalysis = async () => {
+    if (!room) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = analysis ?? (await api.getAnalysis(room.code));
+      setAnalysis(result);
+      setStage("results");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "분석 결과를 불러오지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const navigate = (next: Stage) => {
+    if (next === "results") {
+      if (!room?.is_complete) return;
+      void openAnalysis();
+      return;
+    }
+    if (next === "waiting" && !room) return;
+    setStage(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return (
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-30 border-b border-black/5 bg-[#f8f6f1]/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <button className="text-left" type="button" onClick={() => navigate("submit")}>
+            <span className="block text-lg font-bold tracking-[-0.04em]">Consensus</span>
+            <span className="hidden text-[11px] text-stone-500 sm:block">Agree less. Decide better.</span>
+          </button>
+
+          <nav className="flex items-center rounded-full border border-black/5 bg-white p-1 shadow-sm" aria-label="화면 이동">
+            {stages.map((item, index) => (
+              (() => {
+                const disabled =
+                  (item.id === "waiting" && !room) ||
+                  (item.id === "results" && !room?.is_complete);
+                return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.id)}
+                disabled={disabled}
+                className={`rounded-full px-3 py-2 text-xs font-semibold transition sm:px-4 ${
+                  stage === item.id
+                    ? "bg-ink text-white"
+                    : "text-stone-500 hover:text-ink disabled:opacity-30"
+                }`}
+              >
+                <span className="sm:hidden">{index + 1}</span>
+                <span className="hidden sm:inline">{item.label}</span>
+              </button>
+                );
+              })()
+            ))}
+          </nav>
+
+          <div className="hidden min-w-28 justify-end sm:flex">
+            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${USE_MOCK_API ? "bg-amber-100 text-amber-800" : "bg-moss-100 text-moss-700"}`}>
+              {USE_MOCK_API ? "MOCK MODE" : "LIVE API"}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {error && (
+        <div className="mx-auto mt-4 flex max-w-3xl items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError("")} aria-label="오류 닫기" className="font-bold">×</button>
+        </div>
+      )}
+
+      <main>
+        {stage === "submit" && (
+          <SubmitPage room={room} loading={busy} onJoin={loadRoom} onSubmit={submit} />
+        )}
+        {stage === "waiting" && room && (
+          <WaitingPage
+            room={room}
+            loading={busy}
+            onRoomChange={setRoom}
+            onAnalyze={openAnalysis}
+          />
+        )}
+        {stage === "results" && analysis && room && (
+          <ResultsPage analysis={analysis} room={room} />
+        )}
+        {stage === "results" && busy && !analysis && (
+          <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 text-center">
+            <div>
+              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-moss-100 border-t-moss-600" />
+              <p className="mt-4 font-semibold">결정의 안정성을 계산하고 있어요.</p>
+              <p className="mt-1 text-sm text-stone-500">숫자는 통계 엔진이, 쟁점 정리는 AI가 맡습니다.</p>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-stone-400 sm:px-6">
+        Consensus는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줍니다.
+      </footer>
+    </div>
+  );
+}
+
+export default App;

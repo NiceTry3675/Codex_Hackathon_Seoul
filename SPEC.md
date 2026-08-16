@@ -45,6 +45,7 @@ Room:
   question: str            # "해커톤 아이디어 선택"
   options: list[str]       # ["A. AI 보안 도구", "B. 의사결정 도구", ...]
   criteria: list[str]      # ["창의성", "구현 가능성", "발표 임팩트"]
+  expected_members: int    # 기본 4, 대기 화면 완료 판단용
   submissions: list[Submission]
 
 Submission:
@@ -80,8 +81,10 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
   "team_weights":      {"창의성": 0.38, "구현 가능성": 0.4, "발표 임팩트": 0.22},
   "weight_agreement":  {"창의성": "HIGH", "구현 가능성": "LOW", ...},
   "score_agreement":   {"A": {"창의성": "HIGH", "구현 가능성": "LOW"}, ...},
+  "option_scores":     {"A": 3.91, "B": 3.84},
+  "mean_scores":       {"A": {"창의성": 4.5, "구현 가능성": 2.5}, ...},
   "hidden_conflicts":  ["A의 가치에는 동의하지만 구현 가능성 신뢰가 낮음"],
-  "stability":         {"A": 0.54, "B": 0.88},
+  "stability":         {"A": 0.46, "B": 0.54},
   "current_winner":    "A",
   "robust_choice":     "B",
   "flip_points": [
@@ -109,12 +112,13 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 3. **현재 점수**: `score(option) = Σ_c team_weight[c] × mean(scores[option][c])`
 4. **Stability (Sensitivity Analysis)** ⭐
    - 팀 가중치를 중심으로 Dirichlet 노이즈 섭동 → 1,000회 재계산.
+   - MVP 기본값은 concentration 50, seed 42로 고정해 데모와 테스트를 재현 가능하게 한다.
    - `stability(option) = 해당 옵션이 1위인 시뮬레이션 비율`
    - `robust_choice = argmax(stability)`
 5. **Flip Point (weight)** ⭐
    - 각 기준의 가중치를 1%p씩 증가(나머지 비례 감소)시키며 1위가 바뀌는 최소 지점 탐색.
 6. **Flip Point (member)**
-   - 제출을 하나씩 제거/1순위 변경 후 재계산 → 결과를 뒤집는 최소 인원 수.
+   - MVP에서는 제출을 하나씩 제거해 재계산한다. 1순위만 바꾸는 반사실 계산은 점수 변경 규칙을 정한 뒤 확장한다.
 7. **Hidden Conflict**
    - 1위 옵션에 대해: 다수가 first_choice로 골랐지만 특정 기준 점수가 LOW agreement
      또는 GPT `concerns`에 다수 등장 → 충돌 문구 생성.

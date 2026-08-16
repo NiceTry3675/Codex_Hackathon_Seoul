@@ -324,7 +324,14 @@ def submit_opinion(
             detail="first_choice must be one of the room options",
         )
 
-    parsed = parse_opinion(payload.reason, room.options, room.criteria)
+    try:
+        parsed = parse_opinion(payload.reason, room.options, room.criteria)
+    except Exception as exc:
+        logger.warning(
+            "Unexpected opinion parser failure error=%s",
+            type(exc).__name__,
+        )
+        parsed = None
     submission = Submission(
         id=str(uuid4()),
         parsed=parsed,

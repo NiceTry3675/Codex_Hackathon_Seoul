@@ -147,6 +147,8 @@ class RoomCreate(ApiModel):
         cleaned = [value.strip() for value in values]
         if any(not value for value in cleaned):
             raise ValueError("labels must not be blank")
+        if any(len(value) > 200 for value in cleaned):
+            raise ValueError("labels must contain at most 200 characters")
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("labels must be unique")
         return cleaned

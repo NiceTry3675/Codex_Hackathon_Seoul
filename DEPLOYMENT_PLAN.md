@@ -1,6 +1,6 @@
 # Consensus AWS Deployment Plan — Insight-D
 
-> 상태 기준: 2026-08-16. 실제 AWS 리소스 변경은 아직 수행하지 않았다.
+> 상태 기준: 2026-08-16. App Runner, ECR, DynamoDB와 전용 IAM 역할이 생성되어 운영 중이다.
 > 목표: 단일 Docker 이미지 → Private ECR → AWS App Runner, 인스턴스 1개 고정.
 
 ## 1. 현재 상태와 배포 차단 요인
@@ -34,7 +34,7 @@
 | 리전 | `ap-northeast-1` (Tokyo) | 서울 발표장에서 지연이 낮음. Seoul은 App Runner endpoint가 없고, 단기 데모라 US 대비 비용 차이는 작음 |
 | 이미지 저장소 | Private ECR, scan-on-push, immutable tag | 이미지 추적과 롤백이 쉬움 |
 | 이미지 태그 | Git SHA (`consensus:<sha>`) | `latest` 덮어쓰기 방지, 직전 정상 이미지로 즉시 롤백 가능 |
-| 자동 배포 | 끔 | 데모 직전 예기치 않은 재배포와 추가 비용 방지 |
+| 자동 배포 | `main` → GitHub Actions → ECR `deploy` → App Runner | 반복 수동 배포를 없애고, 발표 30분 전에는 `main` push를 동결 |
 | 인스턴스 | 1 vCPU / 2 GB, min=1, max=1 | DynamoDB 영속화 후에도 데모 비용과 동작 예측성을 위해 1개 유지 |
 | room 저장소 | DynamoDB `consensus-rooms`, on-demand | App Runner 교체·재시작 후에도 방과 제출을 유지 |
 | 상태 확인 | HTTP `/api/health`, port `8080` | 애플리케이션 준비 상태를 직접 확인 |
@@ -105,13 +105,17 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
 
 **2:00 중단 규칙:** IAM/ECR/App Runner 문제를 20분 안에 해소하지 못하면 더 파고들지 말고 Phase 6의 EC2 폴백으로 전환한다.
 
-### Phase 3 — 최종 이미지 배포 (통합 완료 직후)
+### Phase 3 — 최종 이미지 자동 배포 (통합 완료 직후)
 
-1. `main`의 release commit을 정하고 Git SHA 태그로 다시 build/push한다.
-2. ECR 이미지 scan 결과에 critical/high 취약점이 있는지 확인한다.
-3. App Runner source image를 새 SHA로 update한다.
-4. service가 `RUNNING`이 되고 health가 안정될 때까지 기다린다.
-5. 자동 배포는 계속 끈 상태로 유지한다.
+1. `main`에 push하면 GitHub Actions가 OIDC 임시 자격 증명으로 로그인한다. 장기 AWS access key는 GitHub에 저장하지 않는다.
+2. Actions가 Docker 이미지를 build하고 ECR의 mutable `deploy` 태그를 갱신한다.
+3. 같은 manifest를 immutable Git SHA 태그로 보존해 롤백 지점을 만든다.
+4. App Runner가 `deploy` 태그 변경을 감지해 자동 배포한다.
+5. service가 `RUNNING`이 되고 health가 안정될 때까지 기다린다.
+6. ECR 이미지 scan 결과에 critical/high 취약점이 있는지 확인한다.
+
+GitHub OIDC 역할은 `NiceTry3675/Codex_Hackathon_Seoul` 저장소의 `main` 브랜치만 신뢰하며,
+ECR push에 필요한 최소 권한만 가진다. ECR은 `deploy` 태그만 mutable이고 나머지 SHA 태그는 immutable이다.
 
 **롤백:** 직전 정상 SHA로 App Runner source image를 되돌린다. room은 DynamoDB에 유지되지만 스키마 호환성을 확인하고 필요하면 데모 데이터를 다시 적재한다.
 
@@ -135,7 +139,7 @@ curl --fail https://SERVICE_URL/api/health
 
 ### Phase 5 — 발표 freeze와 관찰 (발표 30분 전)
 
-1. 최종 배포 후 코드/이미지 변경을 금지한다.
+1. 최종 배포 후 `main` push를 중단해 코드/이미지 변경을 금지한다.
 2. 마지막 배포 뒤 데모 room을 새로 만들고 room code와 결과 URL을 팀에 공유한다.
 3. 리허설 2회 동안 App Runner 상태와 CloudWatch application/service logs를 확인한다.
 4. 네트워크/GPT 실패에 대비해 분석 JSON과 결과 화면 캡처를 로컬에 보관한다.

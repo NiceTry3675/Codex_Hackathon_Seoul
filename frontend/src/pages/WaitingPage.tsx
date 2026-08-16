@@ -11,6 +11,13 @@ interface WaitingPageProps {
 
 function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProps) {
   const [refreshing, setRefreshing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(room.code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
 
   const refresh = async () => {
     setRefreshing(true);
@@ -40,15 +47,23 @@ function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProp
           {room.is_complete ? "모두 준비됐어요." : "조금만 기다려 주세요."}
         </h1>
         <p className="mx-auto mt-4 max-w-lg leading-7 text-stone-600">
-          개별 답변은 공개하지 않습니다. 모두의 입력이 완료되면, 팀의 분석 결과를 함께 확인할 수 있어요.
+          개별 답변은 공개하지 않습니다.<br />
+          모두의 입력이 완료되면, 팀의 분석 결과를 함께 확인할 수 있어요.
         </p>
 
         <div className="mx-auto mt-9 max-w-xl rounded-3xl bg-stone-50 p-6 sm:p-8">
           <div className="flex items-end justify-center gap-2">
             <strong className="text-6xl font-semibold tracking-[-0.06em] text-ink">{room.submission_count}</strong>
-            <span className="pb-2 text-lg text-stone-400">/ {expectedMembers}명</span>
+            <span className="pb-2 text-lg text-stone-500">/ {expectedMembers}명</span>
           </div>
-          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-stone-200" aria-label={`제출 진행률 ${Math.round(progress)}%`}>
+          <div
+            className="mt-6 h-2.5 overflow-hidden rounded-full bg-stone-200"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={expectedMembers}
+            aria-valuenow={room.submission_count}
+            aria-label={`제출 진행률 ${Math.round(progress)}%`}
+          >
             <div className="h-full rounded-full bg-moss-600 transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
           <div className="mt-5 flex flex-wrap justify-center gap-3" aria-hidden="true">
@@ -90,10 +105,18 @@ function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProp
           </button>
         </div>
 
-        <div className="mt-9 border-t border-black/5 pt-6 text-sm text-stone-500">
-          <span className="font-mono font-bold tracking-[0.18em] text-ink">{room.code}</span>
-          <span className="mx-2 text-stone-300">·</span>
-          이 코드를 팀원에게 공유하세요.
+        <div className="mt-9 flex flex-wrap items-center justify-center gap-3 border-t border-black/5 pt-6 text-sm text-stone-500">
+          <span>이 코드를 팀원에게 공유하세요.</span>
+          <button
+            type="button"
+            onClick={() => void copyCode()}
+            className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-sm font-bold tracking-[0.18em] text-ink transition hover:border-moss-500"
+          >
+            {room.code}
+            <span className="font-sans text-xs font-semibold tracking-normal text-moss-700" aria-live="polite">
+              {copied ? "복사됨 ✓" : "복사"}
+            </span>
+          </button>
         </div>
       </section>
     </div>

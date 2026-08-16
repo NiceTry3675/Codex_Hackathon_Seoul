@@ -55,4 +55,33 @@
   .secondary-button {
     @apply inline-flex min-h-11 items-center justify-center rounded-2xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold transition hover:border-moss-500 hover:text-moss-700 disabled:cursor-not-allowed disabled:opacity-40;
   }
+
+  .slider {
+    @apply h-2 w-full cursor-pointer appearance-none rounded-full bg-stone-200;
+  }
+
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 9999px;
+    background: #3b5e48;
+    border: 3px solid #ffffff;
+    box-shadow: 0 1px 4px rgba(24, 34, 29, 0.35);
+    transition: transform 0.15s ease;
+  }
+
+  .slider::-webkit-slider-thumb:hover {
+    transform: scale(1.12);
+  }
+
+  .slider::-moz-range-thumb {
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 9999px;
+    background: #3b5e48;
+    border: 3px solid #ffffff;
+    box-shadow: 0 1px 4px rgba(24, 34, 29, 0.35);
+  }
 }

@@ -267,7 +267,7 @@ function App() {
         )}
       </main>
 
-      <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-stone-400 sm:px-6">
+      <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-stone-500 sm:px-6">
         Consensus는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줍니다.
       </footer>
     </div>

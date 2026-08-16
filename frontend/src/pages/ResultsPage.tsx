@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Agreement, AnalysisResponse, Room } from "../types";
 
 interface ResultsPageProps {
@@ -18,6 +18,48 @@ function percent(value: number) {
 
 function optionShortName(option: string) {
   return option.split(". ")[0] || option;
+}
+
+function useCountUp(target: number, duration = 900) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setValue(target);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(target * eased);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+
+  return value;
+}
+
+function StabilityDonut({ value }: { value: number }) {
+  const animated = useCountUp(value);
+  return (
+    <div
+      className="mx-auto mt-6 flex h-32 w-32 items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(#3b5e48 ${animated * 360}deg, #e7e5e4 0deg)` }}
+    >
+      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-3xl font-semibold tracking-tight">
+        {percent(animated)}
+      </div>
+    </div>
+  );
+}
+
+function sliderFill(value: number, min: number, max: number) {
+  const ratio = ((value - min) / (max - min)) * 100;
+  return { background: `linear-gradient(to right, #3b5e48 ${ratio}%, #e7e5e4 ${ratio}%)` };
 }
 
 function ResultsPage({ analysis, room }: ResultsPageProps) {
@@ -78,7 +120,7 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
             {voteEntries.map(([option, share], index) => (
               <div key={option}>
                 <div className="mb-2 flex items-center justify-between gap-4 text-sm">
-                  <span className="font-semibold"><span className="mr-2 text-stone-400">{index + 1}</span>{option}</span>
+                  <span className="font-semibold"><span className="mr-2 text-stone-500">{index + 1}</span>{option}</span>
                   <strong>{percent(share)}</strong>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-stone-100">
@@ -103,12 +145,7 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
                     <span className="text-sm font-semibold leading-5">{option}</span>
                     {robust && <span className="shrink-0 rounded-full bg-moss-600 px-2 py-1 text-[10px] font-bold text-white">MOST ROBUST</span>}
                   </div>
-                  <div
-                    className="mx-auto mt-6 flex h-32 w-32 items-center justify-center rounded-full"
-                    style={{ background: `conic-gradient(#3b5e48 ${value * 360}deg, #e7e5e4 0deg)` }}
-                  >
-                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-3xl font-semibold tracking-tight">{percent(value)}</div>
-                  </div>
+                  <StabilityDonut value={value} />
                   <p className="mt-4 text-center text-xs text-stone-500">1위 유지 확률</p>
                 </div>
               );
@@ -212,7 +249,8 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
                       max="100"
                       value={liveWeights[criterion] ?? 1}
                       onChange={(event) => setLiveWeights((current) => ({ ...current, [criterion]: Number(event.target.value) }))}
-                      className="mt-3 h-2 w-full cursor-pointer"
+                      className="slider mt-3"
+                      style={sliderFill(liveWeights[criterion] ?? 1, 1, 100)}
                     />
                   </label>
                 ))}
@@ -238,7 +276,7 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
                     </li>
                   ))}
                 </ol>
-                <p className="mt-4 text-right text-xs text-stone-400">5점 만점 가중 평균</p>
+                <p className="mt-4 text-right text-xs text-stone-500">5점 만점 가중 평균</p>
               </div>
             </div>
           )}

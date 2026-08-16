@@ -24,7 +24,7 @@ def _chat_json(system_prompt: str, payload: dict[str, Any]) -> dict[str, Any] | 
         return None
 
     body = {
-        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        "model": os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
         "response_format": {"type": "json_object"},
         "temperature": 0.2,
         "messages": [

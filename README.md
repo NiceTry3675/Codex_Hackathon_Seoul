@@ -1,154 +1,107 @@
 # Consensus
 
-> Agree less. Decide better.
+> **Agree less. Decide better.**
+> 팀의 만장일치가 진짜인지 검증하는 결정 스트레스 테스트 도구
 
-익명 또는 실명 입력을 바탕으로 팀 결정의 안정성, 숨은 갈등, 뒤집힘 조건을 보여주는 해커톤 MVP입니다.
-Google 로그인은 계정 세션에만 사용하며, 제출에는 Google 계정을 자동으로 연결하지 않습니다.
+> [!NOTE]
+> **Built entirely with [OpenAI Codex](https://developers.openai.com/codex/).**
+> 아이디어 구체화, 제품·아키텍처 설계, 프롬프트 작성, 프런트엔드·백엔드 구현,
+> 테스트, 배포 자동화, 문서화까지 이 프로젝트의 모든 개발 작업을 Codex로 수행했습니다.
+> 팀은 목표와 제약을 정하고 Codex의 결과를 검토하며 제품 의사결정을 내렸습니다.
 
-현재 저장소는 팀원이 각 모듈을 바로 이어서 개발할 수 있는 **작동 가능한 초안 골격**을 목표로 합니다. 제품 배경은 [`CONTEXT.md`](CONTEXT.md), 구현 계약은 [`SPEC.md`](SPEC.md), 역할과 일정은 [`PLAN.md`](PLAN.md)를 참고하세요.
+## 🔗 라이브 데모
 
-## 빠른 시작
+| | URL |
+|---|---|
+| **서비스** | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com> |
+| API 문서 (Swagger) | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com/docs> |
+| 상태 확인 | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com/api/health> |
 
-### 백엔드
+AWS App Runner(도쿄 리전) 단일 컨테이너로 배포되어 있으며, `main` 브랜치 push 시 GitHub Actions가 ECR 이미지 빌드와 배포를 자동 수행합니다.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn backend.main:app --reload --port 8000
-```
+## 문제: 가짜 합의
 
-- API 문서: <http://localhost:8000/docs>
-- 상태 확인: <http://localhost:8000/api/health>
-- `OPENAI_API_KEY`가 없어도 통계 분석은 동작합니다.
+회의 끝에 4명 전원이 A안에 동의했다 — 만장일치. 하지만 한 명은 사실 다른 안을 원했고, 한 명은 A가 불가능하다고 생각한다. 반대는 근거·대안·감정 비용을 요구하기 때문에 침묵 속으로 사라지고(애빌린 패러독스, 집단사고), 문제는 실행 단계에서 "사실 저는 처음부터…"로 터진다.
 
-### Google 로그인 설정
+기존 투표 앱은 "왜 찍었는지"를 보지 않고, 회의 요약 AI는 말하지 않은 반대를 기록할 수 없다. **Consensus는 익명 입력으로 침묵을 데이터로 바꾸고, 그 데이터에 통계적 스트레스 테스트를 가해 합의의 강도를 측정합니다.**
 
-Google Cloud Console에서 OAuth 2.0 Client ID의 유형을 **웹 애플리케이션**으로 만들고,
-승인된 JavaScript 원본에 로컬 `http://localhost:5173`과 실제 배포 HTTPS 원본을 등록합니다.
-그다음 서버 환경변수만 설정합니다.
+## 무엇을 보여주는가
 
-```bash
-export GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
-export SESSION_SECRET="$(openssl rand -hex 32)"
-# HTTPS 배포 환경에서만 true
-export SESSION_COOKIE_SECURE=true
-```
+1. **Hidden Conflict** — 찬성표 뒤에 숨은 우려. "전원이 A에 찬성했지만, 전원이 구현 가능성을 걱정한다."
+2. **Decision Stability** — 평가 기준 가중치를 Dirichlet 섭동으로 1,000번 흔들었을 때 현재 1위가 살아남는 비율. 표면적 합의 100%가 실질 안정성 47%일 수 있다.
+3. **Flip Point** — 결정이 뒤집히는 최소 조건. "구현 가능성을 1%만 더 중요하게 보면 승자가 바뀝니다."
+4. **Most Robust Choice** — 가장 많은 표를 받은 답이 아니라, 평가 조건이 흔들려도 1위를 유지할 확률이 가장 높은 답.
 
-- `GOOGLE_CLIENT_SECRET`은 사용하지 않습니다. 프런트가 받은 Google ID 토큰을 FastAPI가
-  공식 `google-auth` 라이브러리로 검증하는 인증 전용 흐름입니다.
-- Client ID는 공개 식별자이므로 `/api/auth/config`가 프런트에 전달합니다.
-- 세션은 7일 만료의 `HttpOnly`, `SameSite=Lax` 서명 쿠키입니다.
-- 배포 담당자가 추가할 사용자 DB에서는 이메일 대신 `/api/auth/me`의 `google_sub`를
-  변경되지 않는 외부 사용자 키로 저장합니다.
+여기에 **Devil's Advocate 공방**이 붙습니다. 분석 결과를 동결한 증거로 삼아 Challenger가 검증 가능한 질문을 던지고, 팀(Defender)이 답변하면 최대 2라운드 안에 각 쟁점을 `resolved` / `open` / `reframed`로 판정해 남은 쟁점만 논의 안건으로 되돌려줍니다.
 
-### 프론트엔드
+**Consensus는 결정하지 않습니다. 결정이 얼마나 견고한지 보여줄 뿐입니다.** 판단과 책임은 팀에 남기고, 판단의 조건만 드러냅니다.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-개발 화면은 <http://localhost:5173>에서 열립니다. 환경변수는 `frontend/.env.example`을 참고하세요.
-
-### 테스트
-
-```bash
-.venv/bin/python -m pytest
-cd frontend && npm run build
-```
-
-전체 릴리스 게이트(테스트 → build → Docker health → LIVE API → 데모 계약)는:
-
-```bash
-./scripts/release_gate.sh
-```
-
-Docker가 없는 개발 환경에서는 API·정적 SPA·데모 계약까지 같은 프로세스에서 검사할 수 있습니다.
-이 모드는 컨테이너 검증을 대체하지 않으므로 배포 전에는 반드시 위의 전체 게이트도 실행합니다.
-
-```bash
-./scripts/release_gate.sh --skip-docker
-```
-
-`OPENAI_API_KEY`가 export되어 있으면 릴리스 게이트가 실제 GPT 구조화,
-Devil's Advocate 질문, Defender 답변 판정을 각각 한 번 검증합니다. 키가 없으면 이 단계만 건너뛰고
-결정적 폴백을 포함한 핵심 경로를 검증합니다. 실 API만 별도로 확인하려면:
-
-```bash
-.venv/bin/python scripts/smoke_openai.py
-```
-
-이 명령은 export된 환경변수를 우선 사용하고, 없으면 Git과 Docker context에서 제외된
-프로젝트 루트의 `.env`에서 `OPENAI_API_KEY`, `OPENAI_MODEL`,
-`OPENAI_TIMEOUT_SECONDS`만 읽습니다.
-
-### 데모 데이터 넣기
-
-백엔드를 실행한 뒤:
-
-```bash
-.venv/bin/python scripts/load_demo.py
-```
-
-새 방을 만들고 [`demo_data.json`](demo_data.json)의 4개 익명 의견을 제출한 다음 분석 결과를 출력합니다.
-
-### Docker
-
-```bash
-docker build -t consensus .
-docker run --rm -p 8080:8080 --env-file .env consensus
-```
-
-단일 컨테이너에서 FastAPI가 빌드된 React 앱을 함께 제공합니다.
-
-## 저장소 구조
+## 아키텍처
 
 ```text
-backend/
-  auth.py              Google ID 토큰 검증과 서명 세션
-  main.py              FastAPI 라우터
-  storage.py           DynamoDB room 저장소와 인메모리 fallback
-  models.py            요청 및 저장 모델
-  stats.py             numpy 통계 엔진
-  llm.py               선택적 GPT 구조화/반론 경계
-  tests/                통계·API 테스트
-frontend/
-  src/pages/            Submit / Waiting / Results
-  src/api.ts            mock/real API 전환 지점
-scripts/load_demo.py    데모 데이터 적재
-demo_data.json          발표용 익명 입력 예시
-Dockerfile              React 빌드 + FastAPI 런타임
+자연어 익명 입력
+   │
+   ▼
+GPT 구조화 (범주형 라벨만 — 숫자를 만들지 않음)
+   │
+   ▼
+통계 엔진 (numpy, 결정적) ──► Stability / Flip Point / Hidden Conflict
+   │
+   ▼
+Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통계 결과 유지)
 ```
 
-## API 골격
+- **계산과 이해의 분리**: 모든 수치는 사용자 입력 + 결정적 통계에서만 나옵니다. LLM은 자연어 구조화와 반론 생성만 담당하고, LLM이 실패해도 분석은 폴백으로 동작합니다.
+- **백엔드**: FastAPI + numpy. 로컬은 인메모리, 프로덕션은 DynamoDB로 방·제출 영속화. WebSocket 없이 polling.
+- **프런트엔드**: React (Vite) SPA — Create Room / Submit / Waiting / Results 4화면. 결과 화면의 가중치 슬라이더로 Flip Point를 라이브 시연.
+- **인증**: Google 로그인(ID 토큰을 `google-auth`로 서버 검증, HttpOnly 서명 쿠키 세션). 제출 자체는 익명 — 계정은 세션에만 사용합니다.
+- **배포**: 단일 Docker 이미지(React 빌드 + FastAPI 런타임) → ECR → App Runner, GitHub Actions 자동 배포 + 불변 롤백 태그.
+
+## API 요약
 
 | Method | Path | 설명 |
 |---|---|---|
-| `GET` | `/api/auth/config` | Google 로그인 공개 설정 |
-| `POST` | `/api/auth/google` | Google ID 토큰 검증 후 세션 생성 |
-| `GET` | `/api/auth/me` | 현재 로그인 사용자 |
-| `POST` | `/api/auth/logout` | 세션 종료 |
 | `POST` | `/api/rooms` | 방 생성 |
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
-| `POST` | `/api/rooms/{code}/submit` | 익명 또는 실명 의견 제출 |
-| `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 |
-| `GET` | `/api/rooms/{code}/debate` | 동결된 증거와 append-only 공방 transcript 조회 |
-| `POST` | `/api/rooms/{code}/debate/defend` | 질문별 Defender 답변 제출 후 최종 판정 |
+| `POST` | `/api/rooms/{code}/submit` | 익명/실명 의견 제출 |
+| `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 (+ Challenger 질문 생성) |
+| `GET` | `/api/rooms/{code}/debate` | 동결 증거와 공방 transcript 조회 |
+| `POST` | `/api/rooms/{code}/debate/defend` | Defender 답변 제출 후 최종 판정 |
+| `GET/POST` | `/api/auth/*` | Google 로그인 설정·세션 |
 
-`/analysis`를 처음 조회하면 Challenger 질문과 증거 스냅샷이 생성됩니다. 이후
-`/debate/defend`에 모든 `challenge_id`의 답변을 한 번에 제출하면 두 번째이자 마지막
-Challenger 턴이 각 항목을 `resolved`, `open`, `reframed`로 판정합니다. `open`과
-`reframed` 항목만 다음 `/analysis` 응답의 `discussion_agenda`에 추가됩니다. 원본 의견
-`reason`은 공방 증거에 포함되지 않으며, LLM 실패 시 판정은 안전하게 `open`으로 유지됩니다.
+## 개발 방식
 
-로컬은 프로세스 메모리를 사용하고, App Runner에서는 DynamoDB로 방과 제출을 영속화합니다.
-Google 로그인은 서명 쿠키 기반이며, 사용자 프로필 DB는 `/api/auth/me`의 `google_sub`를
-기준으로 연결할 수 있습니다. WebSocket은 사용하지 않습니다.
+이 프로젝트는 해커톤 기간 동안 모든 개발 작업을 OpenAI **Codex**로 수행했습니다. 사람은 문제와 목표, 제약 조건을 정의하고 결과를 검수했으며, Codex가 제품 명세 작성부터 코드 구현, 테스트, 장애 진단, 배포 자동화, 문서 정리까지 실행했습니다. Backend / Stats / Frontend / QA 역할로 작업을 나누고, 구현 계약([`SPEC.md`](SPEC.md))과 프롬프트 명세([`prompt/`](prompt/))를 먼저 고정해 각 작업이 같은 경계 안에서 이어지도록 했습니다. 런타임의 Devil's Advocate까지 포함하면, 에이전트 기반 작업 방식을 개발 과정과 제품 양쪽에 적용한 셈입니다.
 
-## 다음 작업 우선순위
+Codex가 작성하고 실행한 자동화 스크립트가 동일한 품질 게이트를 반복 검증합니다:
 
-1. `OPENAI_API_KEY`를 주입한 실제 OpenAI 스모크 테스트
-2. App Runner 인스턴스 수 1개 고정 후 배포본 릴리스 게이트
-3. 모바일 2대에서 polling·결과 화면·라이브 슬라이더 리허설
+```bash
+bash scripts/release_gate.sh   # 테스트 → 프런트 빌드 → Docker health → LIVE API → 데모 계약
+```
+
+## 로컬 실행
+
+```bash
+# 터미널 1: 백엔드
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn backend.main:app --reload --port 8000
+
+# 터미널 2: 프런트엔드
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+
+# 터미널 3, 프로젝트 루트: 데모 데이터 적재
+# 방 생성 + 익명 의견 4건 제출 + 분석 출력
+.venv/bin/python scripts/load_demo.py
+```
+
+`OPENAI_API_KEY` 없이도 통계 분석과 결정적 폴백 경로가 전부 동작합니다. Google 로그인·Docker·배포 상세는 [`DEPLOYMENT_PLAN.md`](DEPLOYMENT_PLAN.md)를 참고하세요.
+
+## 문서
+
+- [`CONTEXT.md`](CONTEXT.md) — 문제 배경과 제품 철학
+- [`SPEC.md`](SPEC.md) — 구현 계약
+- [`prompt/04_devils_advocate_prompt.md`](prompt/04_devils_advocate_prompt.md) — Devil's Advocate 공방 명세
+- [`demo_data.json`](demo_data.json) — 발표용 익명 입력 예시

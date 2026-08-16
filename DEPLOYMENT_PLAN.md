@@ -11,14 +11,16 @@
 - `us-east-1`과 `ap-northeast-1`에서 App Runner API 접근 가능.
 - ECR 저장소, App Runner 서비스, App Runner용 IAM 역할은 아직 없음.
 - 프론트 production build 성공.
-- 백엔드/API 테스트 `9 passed` (`pytest -s` 기준).
+- 백엔드/API 테스트와 데모 계약·동시성 회귀 테스트가 로컬에서 통과한다.
 - Dockerfile은 React 빌드 + FastAPI 런타임의 2-stage 단일 컨테이너 구조이며 `/api/health`가 있음.
 
 ### 배포 전 반드시 해결
 
 1. **현재 AWS CLI 주체가 계정 root ARN이다.** 해커톤 배포에 root를 사용하기로 명시적으로 확정했으므로 작업 범위를 이 서비스 리소스로 제한하고 실행 전후 대상 ARN을 확인한다.
-2. **현재 WSL에서 Docker CLI/daemon을 사용할 수 없다.** Docker Desktop의 WSL Integration을 켜고 `docker info`가 성공해야 한다.
-3. **현재 Docker 빌드는 프론트를 mock 모드로 만든다.** `VITE_USE_MOCK_API`의 기본값이 mock이므로 Dockerfile의 frontend build 단계에서 `VITE_USE_MOCK_API=false`를 명시해야 한다. 같은 컨테이너의 API를 쓰므로 `VITE_API_BASE_URL`은 빈 값으로 둔다.
+2. **해결 완료:** Docker CLI와 Colima 런타임을 설치·기동했고 전체
+   `./scripts/release_gate.sh`가 이미지 build, 컨테이너 health, LIVE API 번들,
+   HTTP 데모 계약까지 통과했다.
+3. **해결 완료:** Dockerfile의 frontend build 단계가 `VITE_USE_MOCK_API=false`, 빈 `VITE_API_BASE_URL`로 live API 번들을 만든다. 릴리스 게이트에서 번들의 `LIVE API` 표시를 재검증한다.
 4. `.env`의 `OPENAI_API_KEY` 존재를 값 노출 없이 확인한다.
 
 ## 2. 권장 결정안
@@ -55,21 +57,17 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
 
 ### Phase 1 — 로컬 release gate (15분)
 
-1. Docker Desktop WSL Integration 활성화 후 `docker info` 확인.
+1. Colima가 실행 중인지 `colima status`와 `docker info`로 확인.
 2. Dockerfile frontend build 단계에 live API 빌드 환경을 설정.
-3. 아래 검증을 모두 통과시킨다.
+3. 아래 원커맨드 릴리스 게이트를 통과시킨다.
 
 ```bash
-.venv/bin/python -m pytest -q -s
-(cd frontend && npm run build)
-docker build -t consensus:local .
-docker run --rm -d --name consensus-local -p 8080:8080 consensus:local
-curl --fail http://localhost:8080/api/health
-docker stop consensus-local
+./scripts/release_gate.sh
 ```
 
 4. 브라우저 헤더가 `LIVE API`인지 확인한다. `MOCK MODE`면 배포 중단.
-5. 로컬 컨테이너에 `scripts/load_demo.py --base-url http://localhost:8080`를 실행하고 분석 JSON이 반환되는지 확인한다.
+5. 릴리스 게이트가 로컬 컨테이너에 데모 데이터를 적재하고 current A, robust B,
+   stability 47.4%/52.6%, 구현 가능성 1%p flip, Devil's Advocate 결과를 자동 검증한다.
 
 **통과 조건:** 테스트, 이미지 빌드, health, live API 데모 적재가 모두 성공한다.
 

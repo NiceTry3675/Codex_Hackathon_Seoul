@@ -78,6 +78,7 @@ class Room(ApiModel):
     submissions: list[Submission] = Field(default_factory=list)
     devils_advocate: DevilsAdvocate | None = None
     devils_advocate_generated: bool = False
+    devils_advocate_source: Literal["live", "fallback"] | None = None
 
 
 class RoomResponse(ApiModel):

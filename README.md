@@ -38,6 +38,31 @@ npm run dev
 cd frontend && npm run build
 ```
 
+전체 릴리스 게이트(테스트 → build → Docker health → LIVE API → 데모 계약)는:
+
+```bash
+./scripts/release_gate.sh
+```
+
+Docker가 없는 개발 환경에서는 API·정적 SPA·데모 계약까지 같은 프로세스에서 검사할 수 있습니다.
+이 모드는 컨테이너 검증을 대체하지 않으므로 배포 전에는 반드시 위의 전체 게이트도 실행합니다.
+
+```bash
+./scripts/release_gate.sh --skip-docker
+```
+
+`OPENAI_API_KEY`가 export되어 있으면 릴리스 게이트가 실제 GPT 구조화와
+Devil's Advocate 호출도 각각 한 번 검증합니다. 키가 없으면 이 단계만 건너뛰고
+결정적 폴백을 포함한 핵심 경로를 검증합니다. 실 API만 별도로 확인하려면:
+
+```bash
+.venv/bin/python scripts/smoke_openai.py
+```
+
+이 명령은 export된 환경변수를 우선 사용하고, 없으면 Git과 Docker context에서 제외된
+프로젝트 루트의 `.env`에서 `OPENAI_API_KEY`, `OPENAI_MODEL`,
+`OPENAI_TIMEOUT_SECONDS`만 읽습니다.
+
 ### 데모 데이터 넣기
 
 백엔드를 실행한 뒤:
@@ -87,7 +112,6 @@ Dockerfile              React 빌드 + FastAPI 런타임
 
 ## 다음 작업 우선순위
 
-1. `demo_data.json`의 수치를 발표 서사에 맞게 최종 조정
-2. Devil's Advocate 실제 OpenAI 호출 및 데모 폴백 문구 확정
-3. 빈 입력·동점·잘못된 옵션/기준에 대한 API 테스트 보강
-4. 배포 환경에서 인스턴스 수 1개 고정 후 E2E 리허설
+1. `OPENAI_API_KEY`를 주입한 실제 OpenAI 스모크 테스트
+2. App Runner 인스턴스 수 1개 고정 후 배포본 릴리스 게이트
+3. 모바일 2대에서 polling·결과 화면·라이브 슬라이더 리허설

@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import string
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Path as ApiPath, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .llm import generate_devils_advocate, parse_opinion
+from .llm import fallback_devils_advocate, generate_devils_advocate, parse_opinion
 from .models import (
     AnalysisResponse,
     HealthResponse,
@@ -26,6 +28,7 @@ from .stats import analyze_room
 
 
 app = FastAPI(title="Consensus API", version="0.1.0")
+logger = logging.getLogger(__name__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,6 +38,8 @@ app.add_middleware(
 )
 
 rooms: dict[str, Room] = {}
+rooms_lock = Lock()
+room_analysis_locks: dict[str, Lock] = {}
 ROOM_CODE_ALPHABET = string.ascii_uppercase + string.digits
 
 
@@ -47,14 +52,16 @@ def _new_room_code() -> str:
 
 def _get_room(code: str) -> Room:
     normalized = code.upper()
-    room = rooms.get(normalized)
+    with rooms_lock:
+        room = rooms.get(normalized)
     if room is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="room not found")
     return room
 
 
 def _room_response(room: Room) -> RoomResponse:
-    submission_count = len(room.submissions)
+    with rooms_lock:
+        submission_count = len(room.submissions)
     return RoomResponse(
         code=room.code,
         question=room.question,
@@ -87,40 +94,61 @@ def _require_exact_keys(
 def _get_devils_advocate(room: Room, result: dict) -> None:
     """Populate the optional qualitative review once per completed room."""
 
-    if room.devils_advocate_generated:
-        if room.devils_advocate is not None:
-            result["devils_advocate"] = room.devils_advocate
-        return
+    with rooms_lock:
+        generation_lock = room_analysis_locks.setdefault(room.code, Lock())
 
-    room.devils_advocate_generated = True
-    low_agreement = [
-        criterion
-        for criterion, level in result.get("weight_agreement", {}).items()
-        if level == "LOW"
-    ]
-    low_agreement.extend(
-        f"{option} / {criterion}"
-        for option, levels in result.get("score_agreement", {}).items()
-        for criterion, level in levels.items()
-        if level == "LOW"
-    )
-    concerns = [
-        concern
-        for submission in room.submissions
-        if submission.parsed is not None
-        for concern in submission.parsed.concerns
-    ]
-    try:
-        room.devils_advocate = generate_devils_advocate(
-            result.get("current_winner"),
-            low_agreement,
-            concerns,
+    with generation_lock:
+        if room.devils_advocate_generated:
+            if room.devils_advocate is not None:
+                result["devils_advocate"] = room.devils_advocate
+            return
+
+        low_agreement = [
+            criterion
+            for criterion, level in result.get("weight_agreement", {}).items()
+            if level == "LOW"
+        ]
+        low_agreement.extend(
+            f"{option} / {criterion}"
+            for option, levels in result.get("score_agreement", {}).items()
+            for criterion, level in levels.items()
+            if level == "LOW"
         )
-    except Exception:
-        # Qualitative review is optional; its provider must never block analysis.
-        room.devils_advocate = None
+        concerns = [
+            concern
+            for submission in room.submissions
+            if submission.parsed is not None
+            for concern in submission.parsed.concerns
+        ]
+        try:
+            room.devils_advocate = generate_devils_advocate(
+                result.get("current_winner"),
+                low_agreement,
+                concerns,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Unexpected Devil's Advocate provider failure error=%s",
+                type(exc).__name__,
+            )
+            room.devils_advocate = None
 
-    if room.devils_advocate is not None:
+        if room.devils_advocate is None:
+            room.devils_advocate = fallback_devils_advocate(
+                result["current_winner"],
+                low_agreement,
+                concerns,
+            )
+            room.devils_advocate_source = "fallback"
+        else:
+            room.devils_advocate_source = "live"
+
+        room.devils_advocate_generated = True
+        logger.info(
+            "Devil's Advocate ready source=%s room=%s",
+            room.devils_advocate_source,
+            room.code,
+        )
         result["devils_advocate"] = room.devils_advocate
 
 
@@ -131,9 +159,11 @@ def health() -> HealthResponse:
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 def create_room(payload: RoomCreate) -> RoomResponse:
-    code = _new_room_code()
-    room = Room(code=code, submissions=[], **payload.model_dump())
-    rooms[code] = room
+    with rooms_lock:
+        code = _new_room_code()
+        room = Room(code=code, submissions=[], **payload.model_dump())
+        rooms[code] = room
+        room_analysis_locks[code] = Lock()
     return _room_response(room)
 
 
@@ -154,11 +184,12 @@ def submit_opinion(
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
-    if len(room.submissions) >= room.expected_members:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="room is full",
-        )
+    with rooms_lock:
+        if len(room.submissions) >= room.expected_members:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="room is full",
+            )
     _require_exact_keys(set(payload.scores), room.options, "scores")
     _require_exact_keys(set(payload.weights), room.criteria, "weights")
     for option, criterion_scores in payload.scores.items():
@@ -175,8 +206,14 @@ def submit_opinion(
         parsed=parsed,
         **payload.model_dump(),
     )
-    room.submissions.append(submission)
-    submission_count = len(room.submissions)
+    with rooms_lock:
+        if len(room.submissions) >= room.expected_members:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="room is full",
+            )
+        room.submissions.append(submission)
+        submission_count = len(room.submissions)
     return SubmitResponse(
         id=submission.id,
         submission_count=submission_count,
@@ -194,7 +231,9 @@ def get_analysis(
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> AnalysisResponse:
     room = _get_room(code)
-    if len(room.submissions) < room.expected_members:
+    with rooms_lock:
+        submission_count = len(room.submissions)
+    if submission_count < room.expected_members:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="all expected members must submit before analysis",

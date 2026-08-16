@@ -10,12 +10,12 @@ import type {
 export const DEFAULT_ROOM_CODE = "X7K2P9";
 
 const optionA = "A. AI 보안 도구";
-const optionB = "B. 의사결정 도구";
-const optionC = "C. 회의 요약 에이전트";
+const optionB = "B. 팀 의사결정 도구";
+const optionC = "C. 회의 요약 도구";
 
 let room: Room = {
   code: DEFAULT_ROOM_CODE,
-  question: "회의에 무엇을 우선할까요?",
+  question: "6시간 해커톤에서 어떤 아이디어를 만들까요?",
   options: [optionA, optionB, optionC],
   criteria: ["창의성", "구현 가능성", "발표 임팩트"],
   expected_members: 4,
@@ -25,33 +25,32 @@ let room: Room = {
 
 export const MOCK_ANALYSIS: AnalysisResponse = {
   vote_share: {
-    [optionA]: 0.5,
+    [optionA]: 0.75,
     [optionB]: 0.25,
-    [optionC]: 0.25,
+    [optionC]: 0,
   },
   team_weights: {
-    창의성: 0.54,
-    "구현 가능성": 0.24,
-    "발표 임팩트": 0.22,
+    창의성: 0.1556,
+    "구현 가능성": 0.7111,
+    "발표 임팩트": 0.1333,
   },
   weight_agreement: {
-    창의성: "MID",
+    창의성: "HIGH",
     "구현 가능성": "LOW",
     "발표 임팩트": "HIGH",
   },
   score_agreement: {
     [optionA]: { 창의성: "HIGH", "구현 가능성": "LOW", "발표 임팩트": "HIGH" },
-    [optionB]: { 창의성: "MID", "구현 가능성": "HIGH", "발표 임팩트": "HIGH" },
-    [optionC]: { 창의성: "MID", "구현 가능성": "MID", "발표 임팩트": "MID" },
+    [optionB]: { 창의성: "HIGH", "구현 가능성": "HIGH", "발표 임팩트": "HIGH" },
+    [optionC]: { 창의성: "HIGH", "구현 가능성": "HIGH", "발표 임팩트": "HIGH" },
   },
   hidden_conflicts: [
-    "A를 1순위로 고른 팀원이 많지만, 구현 가능성 평가는 크게 갈렸습니다.",
-    "구현 가능성의 중요도에 대해서도 팀의 합의가 낮습니다.",
+    "A. AI 보안 도구은(는) 1순위 다수 선택이지만 구현 가능성 평가는 크게 갈립니다.",
   ],
   stability: {
-    [optionA]: 0.39,
-    [optionB]: 0.54,
-    [optionC]: 0.07,
+    [optionA]: 0.474,
+    [optionB]: 0.526,
+    [optionC]: 0,
   },
   current_winner: optionA,
   robust_choice: optionB,
@@ -59,18 +58,19 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     {
       type: "weight",
       criterion: "구현 가능성",
-      from: 0.24,
-      to: 0.29,
+      from: 0.7111,
+      to: 0.7211,
       new_winner: optionB,
     },
     {
       type: "member",
-      description: "1명의 평가가 A에서 B로 이동하면 현재 1위가 바뀝니다.",
+      description: "1명의 의견을 제외하면 결과가 B. 팀 의사결정 도구(으)로 바뀜",
     },
   ],
   discussion_agenda: [
-    "A를 추진하기 위한 최소 조건을 먼저 합의하세요.",
-    "구현 가능성에 29% 이상의 비중을 둘지 논의하세요.",
+    "구현 가능성 중요도가 1%p 오르면 B. 팀 의사결정 도구(으)로 바뀝니다. 이 기준을 먼저 논의하세요.",
+    "A. AI 보안 도구의 구현 가능성 평가가 갈리는 근거를 확인하세요.",
+    "1명의 의견을 제외하면 결과가 B. 팀 의사결정 도구(으)로 바뀜.",
   ],
   devils_advocate: {
     target: optionA,
@@ -80,9 +80,9 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     ],
   },
   mean_scores: {
-    [optionA]: { 창의성: 4.8, "구현 가능성": 2.6, "발표 임팩트": 4.7 },
-    [optionB]: { 창의성: 4.1, "구현 가능성": 4.5, "발표 임팩트": 4.2 },
-    [optionC]: { 창의성: 3.9, "구현 가능성": 4.0, "발표 임팩트": 3.7 },
+    [optionA]: { 창의성: 4.75, "구현 가능성": 3.75, "발표 임팩트": 3.75 },
+    [optionB]: { 창의성: 2.5, "구현 가능성": 4.75, "발표 임팩트": 1.0 },
+    [optionC]: { 창의성: 1.75, "구현 가능성": 2.5, "발표 임팩트": 3.5 },
   },
 };
 

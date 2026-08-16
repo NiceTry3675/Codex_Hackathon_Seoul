@@ -75,7 +75,7 @@ def _require_exact_keys(
     if actual == expected_set:
         return
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail={
             "message": f"{field_name} keys must match the room definition",
             "missing": sorted(expected_set - actual),
@@ -114,13 +114,18 @@ def submit_opinion(
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
+    if len(room.submissions) >= room.expected_members:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="room is full",
+        )
     _require_exact_keys(set(payload.scores), room.options, "scores")
     _require_exact_keys(set(payload.weights), room.criteria, "weights")
     for option, criterion_scores in payload.scores.items():
         _require_exact_keys(set(criterion_scores), room.criteria, f"scores.{option}")
     if payload.first_choice not in room.options:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="first_choice must be one of the room options",
         )
 
@@ -149,10 +154,10 @@ def get_analysis(
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> AnalysisResponse:
     room = _get_room(code)
-    if not room.submissions:
+    if len(room.submissions) < room.expected_members:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="at least one submission is required before analysis",
+            detail="all expected members must submit before analysis",
         )
 
     try:

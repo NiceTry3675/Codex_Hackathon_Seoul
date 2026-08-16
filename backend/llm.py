@@ -49,7 +49,16 @@ def _chat_json(system_prompt: str, payload: dict[str, Any]) -> dict[str, Any] | 
         content = result["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         return parsed if isinstance(parsed, dict) else None
-    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
+    except (
+        HTTPError,
+        URLError,
+        OSError,
+        TimeoutError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+    ):
         return None
 
 

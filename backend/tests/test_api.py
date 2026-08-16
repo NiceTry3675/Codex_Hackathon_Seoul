@@ -63,6 +63,53 @@ def test_analysis_requires_a_submission(client: TestClient):
     response = client.get(f"/api/rooms/{room['code']}/analysis")
 
     assert response.status_code == 409
+    assert response.json()["detail"] == "all expected members must submit before analysis"
+
+
+def test_analysis_requires_all_expected_members(client: TestClient):
+    payload = room_payload()
+    payload["expected_members"] = 2
+    room = client.post("/api/rooms", json=payload).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+
+    response = client.get(f"/api/rooms/{room['code']}/analysis")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "all expected members must submit before analysis"
+
+
+def test_unknown_room_returns_not_found(client: TestClient):
+    response = client.get("/api/rooms/ABC123")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "room not found"
+
+
+def test_room_codes_are_case_insensitive(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+
+    response = client.get(f"/api/rooms/{room['code'].lower()}")
+
+    assert response.status_code == 200
+    assert response.json()["code"] == room["code"]
+
+
+def test_room_status_never_exposes_individual_submissions(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+
+    response = client.get(f"/api/rooms/{room['code']}")
+
+    assert response.status_code == 200
+    assert set(response.json()) == {
+        "code",
+        "question",
+        "options",
+        "criteria",
+        "expected_members",
+        "submission_count",
+        "is_complete",
+    }
 
 
 def test_submission_keys_must_match_room(client: TestClient):
@@ -84,3 +131,25 @@ def test_score_range_is_validated(client: TestClient):
     response = client.post(f"/api/rooms/{room['code']}/submit", json=payload)
 
     assert response.status_code == 422
+
+
+def test_first_choice_must_be_a_room_option(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    payload = submission_payload()
+    payload["first_choice"] = "C"
+
+    response = client.post(f"/api/rooms/{room['code']}/submit", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "first_choice must be one of the room options"
+
+
+def test_submission_is_rejected_after_the_room_is_full(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    first = client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+
+    response = client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+
+    assert first.status_code == 201
+    assert response.status_code == 409
+    assert response.json()["detail"] == "room is full"

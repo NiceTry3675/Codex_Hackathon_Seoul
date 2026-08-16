@@ -15,6 +15,8 @@
 - Consensus는 결정을 추천하지 않는다. 결정의 견고성을 보여줄 뿐이다.
 - 계산은 Python(통계), 의미 이해는 GPT. GPT는 숫자를 만들지 않는다.
 - 방 생성자가 **익명 또는 실명 제출**을 선택한다. 개인 점수·의견은 어느 모드에서도 공개하지 않는다.
+- Google 로그인 계정은 Submission에 자동 연결하지 않는다. 실명 모드에서는 사용자가
+  입력한 `participant_name`만 제출 완료 여부에 사용한다.
 
 ---
 
@@ -25,17 +27,24 @@
                           │
                           └──> [OpenAI API (구조화 전용)]
 
+[Google Identity Services] ──ID token──> [FastAPI 검증] ──> [서명 세션 쿠키]
+
 배포: Docker 단일 컨테이너 (FastAPI가 React 빌드 정적 서빙)
       → AWS App Runner (권장) 또는 EC2
 저장: 로컬은 인메모리 dict, App Runner는 DynamoDB (`consensus-rooms`)
 ```
 
-- 단일 컨테이너, 단일 프로세스. 해커톤 범위에서 DB/Redis/큐 금지.
+- 단일 컨테이너, 단일 프로세스. 로컬은 인메모리 fallback을 쓰고 배포 환경은
+  DynamoDB만 사용한다. Redis와 별도 큐는 두지 않는다.
 - 방(room) 단위 세션: 6자리 코드로 생성/참여. 링크 공유 → 팀원 각자 폰에서 입력.
+- 계정 세션은 Google 로그인만 지원한다. 서버가 ID 토큰을 검증하고 `sub`를 사용자 키로
+  사용한다. 닉네임·사용자 DB는 배포 담당 서버에서 이 키에 연결한다.
+- 의견 제출 데이터에는 Google `sub`와 이메일을 저장하지 않는다. 실명 모드에서만
+  사용자가 직접 입력한 `participant_name`을 저장한다.
 
 ---
 
-## 3. 데이터 모델 (인메모리)
+## 3. 데이터 모델
 
 ```python
 rooms: dict[str, Room]  # 로컬 fallback; 배포 환경은 DynamoDB
@@ -69,6 +78,10 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 
 | Method | Path | 설명 |
 |---|---|---|
+| GET | `/api/auth/config` | Google 로그인 활성화 여부와 공개 Client ID |
+| POST | `/api/auth/google` | `credential` ID 토큰 검증 후 HttpOnly 세션 생성 |
+| GET | `/api/auth/me` | 로그인 상태와 검증된 사용자 프로필 |
+| POST | `/api/auth/logout` | 세션 쿠키 제거 |
 | POST | `/api/rooms` | 방 생성 (question, options, criteria) → room code |
 | GET | `/api/rooms/{code}` | 방 정보 + 제출 수 |
 | POST | `/api/rooms/{code}/submit` | 의견 제출 (내부에서 GPT 구조화 호출) |
@@ -193,10 +206,11 @@ t3.small + docker run, 보안그룹 80/443 오픈, 필요 시 Caddy로 HTTPS.
 
 ---
 
-## 10. 범위 제외 (절대 금지)
+## 10. 범위 제외
 
-계정/로그인, DB, Slack/채팅 연동, 실시간 음성 분석, 조직 관리, WebSocket
-(현황 갱신은 3초 폴링으로 충분), 복잡한 NLP.
+자체 비밀번호 로그인, Google 이외 소셜 로그인, 사용자·닉네임 DB 구현,
+Submission과 로그인 계정 연결, Slack/채팅 연동, 실시간 음성 분석, 조직 관리,
+WebSocket(현황 갱신은 3초 폴링으로 충분), 복잡한 NLP.
 
 ---
 

@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import { api, USE_MOCK_API } from "./api";
+import GoogleLoginButton from "./components/GoogleLoginButton";
 import { DEFAULT_ROOM_CODE } from "./mock";
 import CreateRoomPage from "./pages/CreateRoomPage";
 import ResultsPage from "./pages/ResultsPage";
 import SubmitPage from "./pages/SubmitPage";
 import WaitingPage from "./pages/WaitingPage";
-import type { AnalysisResponse, CreateRoomPayload, Room, SubmissionPayload } from "./types";
+import type {
+  AnalysisResponse,
+  AuthConfig,
+  AuthState,
+  CreateRoomPayload,
+  Room,
+  SubmissionPayload,
+} from "./types";
 
 type Stage = "create" | "submit" | "waiting" | "results";
 
@@ -22,6 +30,10 @@ function App() {
   const [analysis, setAnalysis] = useState<AnalysisResponse>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [authConfig, setAuthConfig] = useState<AuthConfig>();
+  const [authState, setAuthState] = useState<AuthState>({ authenticated: false, user: null });
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const loadRoom = async (code: string) => {
     setBusy(true);
@@ -41,8 +53,41 @@ function App() {
   useEffect(() => {
     if (USE_MOCK_API) {
       void loadRoom(DEFAULT_ROOM_CODE).catch(() => undefined);
+      return;
     }
+    void Promise.all([api.getAuthConfig(), api.getAuthState()])
+      .then(([config, state]) => {
+        setAuthConfig(config);
+        setAuthState(state);
+      })
+      .catch(() => setAuthError("로그인 상태를 확인하지 못했습니다."));
   }, []);
+
+  const loginWithGoogle = async (credential: string) => {
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      setAuthState(await api.loginWithGoogle(credential));
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "Google 로그인에 실패했습니다.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      await api.logout();
+      window.google?.accounts.id.disableAutoSelect();
+      setAuthState({ authenticated: false, user: null });
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "로그아웃하지 못했습니다.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   const submit = async (payload: SubmissionPayload) => {
     if (!room) return;
@@ -108,7 +153,7 @@ function App() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-black/5 bg-[#f8f6f1]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:flex-nowrap sm:px-6">
           <button className="text-left" type="button" onClick={() => navigate("submit")}>
             <span className="block text-lg font-bold tracking-[-0.04em]">Consensus</span>
             <span className="hidden text-[11px] text-stone-500 sm:block">Agree less. Decide better.</span>
@@ -140,13 +185,53 @@ function App() {
             ))}
           </nav>
 
-          <div className="hidden min-w-28 justify-end sm:flex">
-            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${USE_MOCK_API ? "bg-amber-100 text-amber-800" : "bg-moss-100 text-moss-700"}`}>
-              {USE_MOCK_API ? "MOCK MODE" : "LIVE API"}
-            </span>
+          <div className="order-3 flex w-full min-w-28 justify-end sm:order-none sm:w-auto">
+            {USE_MOCK_API ? (
+              <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800">
+                MOCK MODE
+              </span>
+            ) : authState.authenticated && authState.user ? (
+              <div className="flex items-center gap-2 rounded-full border border-black/5 bg-white py-1 pl-2 pr-1 shadow-sm">
+                <span
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-moss-100 text-xs font-bold text-moss-700"
+                  aria-hidden="true"
+                >
+                  {authState.user.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="max-w-28 truncate text-xs font-semibold" title={authState.user.email}>
+                  {authState.user.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  disabled={authBusy}
+                  className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-stone-500 transition hover:bg-stone-100 hover:text-ink disabled:opacity-40"
+                >
+                  로그아웃
+                </button>
+              </div>
+            ) : authConfig?.enabled && authConfig.client_id ? (
+              <GoogleLoginButton
+                clientId={authConfig.client_id}
+                disabled={authBusy}
+                onCredential={loginWithGoogle}
+                onLoadError={() => setAuthError("Google 로그인 모듈을 불러오지 못했습니다.")}
+              />
+            ) : (
+              <span className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-500">
+                {authConfig ? "Google 로그인 미설정" : "LIVE API"}
+              </span>
+            )}
           </div>
         </div>
       </header>
+
+      {authError && (
+        <div className="mx-auto mt-4 flex max-w-3xl items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <span>{authError}</span>
+          <button type="button" onClick={() => setAuthError("")} aria-label="로그인 오류 닫기" className="font-bold">×</button>
+        </div>
+      )}
 
       {error && (
         <div className="mx-auto mt-4 flex max-w-3xl items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">

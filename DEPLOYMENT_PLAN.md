@@ -22,6 +22,9 @@
    HTTP 데모 계약까지 통과했다.
 3. **해결 완료:** Dockerfile의 frontend build 단계가 `VITE_USE_MOCK_API=false`, 빈 `VITE_API_BASE_URL`로 live API 번들을 만든다. 릴리스 게이트에서 번들의 `LIVE API` 표시를 재검증한다.
 4. `.env`의 `OPENAI_API_KEY` 존재를 값 노출 없이 확인한다.
+5. Google 로그인 사용 시 `GOOGLE_CLIENT_ID`, 32자 이상의 `SESSION_SECRET`,
+   `SESSION_COOKIE_SECURE=true`를 런타임 환경변수로 설정한다. Google OAuth 승인된
+   JavaScript 원본에는 최종 HTTPS 서비스 원본을 등록한다.
 
 ## 2. 권장 결정안
 
@@ -84,6 +87,10 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
 4. `.env`에서 읽은 값을 출력하지 않고 App Runner plain-text runtime environment variable로 주입한다.
    - `OPENAI_API_KEY`: 실제 키
    - `OPENAI_MODEL`: `gpt-5.6-sol`
+   - `CONSENSUS_TABLE_NAME`: `consensus-rooms`
+   - `GOOGLE_CLIENT_ID`: Google OAuth 웹 Client ID
+   - `SESSION_SECRET`: 운영용 무작위 값(최소 32자)
+   - `SESSION_COOKIE_SECURE`: `true`
    - 키를 tracked 파일, 이미지 layer, shell history, 로그에 기록하지 않는다.
 5. autoscaling config를 `MinSize=1`, `MaxSize=1`로 생성한다.
 6. App Runner service `consensus-demo`를 생성한다.

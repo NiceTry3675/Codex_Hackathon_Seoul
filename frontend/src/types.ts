@@ -1,5 +1,22 @@
 export type Agreement = "HIGH" | "MID" | "LOW";
 
+export interface AuthUser {
+  google_sub: string;
+  email: string;
+  name: string;
+  picture?: string | null;
+}
+
+export interface AuthState {
+  authenticated: boolean;
+  user: AuthUser | null;
+}
+
+export interface AuthConfig {
+  enabled: boolean;
+  client_id: string | null;
+}
+
 export interface Room {
   code: string;
   question: string;

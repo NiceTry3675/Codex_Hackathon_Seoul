@@ -3,20 +3,38 @@
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import string
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Path as ApiPath, status
+from fastapi import FastAPI, HTTPException, Path as ApiPath, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .auth import (
+    SESSION_COOKIE_NAME,
+    AuthConfigurationError,
+    GoogleVerificationUnavailable,
+    InvalidGoogleCredential,
+    auth_is_configured,
+    create_session_token,
+    google_client_id,
+    session_cookie_secure,
+    session_ttl_seconds,
+    user_from_request,
+    verify_google_credential,
+)
 from .llm import fallback_devils_advocate, generate_devils_advocate, parse_opinion
 from .models import (
     AnalysisResponse,
+    AuthConfig,
+    AuthState,
+    GoogleCredential,
     HealthResponse,
+    LogoutResponse,
     Room,
     RoomCreate,
     RoomResponse,
@@ -30,10 +48,18 @@ from .stats import analyze_room
 
 app = FastAPI(title="Consensus API", version="0.1.0")
 logger = logging.getLogger(__name__)
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -167,6 +193,66 @@ def _get_devils_advocate(room: Room, result: dict) -> None:
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
+
+
+@app.get("/api/auth/config", response_model=AuthConfig)
+def get_auth_config() -> AuthConfig:
+    client_id = google_client_id()
+    return AuthConfig(
+        enabled=auth_is_configured(),
+        client_id=client_id,
+    )
+
+
+@app.post("/api/auth/google", response_model=AuthState)
+def google_login(payload: GoogleCredential, response: Response) -> AuthState:
+    try:
+        user = verify_google_credential(payload.credential)
+        session_token = create_session_token(user)
+    except AuthConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except GoogleVerificationUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except InvalidGoogleCredential as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session_token,
+        max_age=session_ttl_seconds(),
+        httponly=True,
+        secure=session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    return AuthState(authenticated=True, user=user)
+
+
+@app.get("/api/auth/me", response_model=AuthState)
+def get_current_user(request: Request) -> AuthState:
+    user = user_from_request(request)
+    return AuthState(authenticated=user is not None, user=user)
+
+
+@app.post("/api/auth/logout", response_model=LogoutResponse)
+def logout(response: Response) -> LogoutResponse:
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    return LogoutResponse()
 
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)

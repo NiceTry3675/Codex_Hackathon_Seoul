@@ -116,6 +116,31 @@ class HealthResponse(ApiModel):
     status: Literal["ok"] = "ok"
 
 
+class GoogleCredential(ApiModel):
+    credential: str = Field(min_length=1, max_length=10_000)
+
+
+class AuthUser(ApiModel):
+    google_sub: str
+    email: str
+    name: str
+    picture: str | None = None
+
+
+class AuthState(ApiModel):
+    authenticated: bool
+    user: AuthUser | None = None
+
+
+class AuthConfig(ApiModel):
+    enabled: bool
+    client_id: str | None = None
+
+
+class LogoutResponse(ApiModel):
+    ok: Literal[True] = True
+
+
 class AnalysisResponse(ApiModel):
     vote_share: dict[str, float] = Field(default_factory=dict)
     team_weights: dict[str, float] = Field(default_factory=dict)

@@ -3,6 +3,7 @@
 > Agree less. Decide better.
 
 익명 또는 실명 입력을 바탕으로 팀 결정의 안정성, 숨은 갈등, 뒤집힘 조건을 보여주는 해커톤 MVP입니다.
+Google 로그인은 계정 세션에만 사용하며, 제출에는 Google 계정을 자동으로 연결하지 않습니다.
 
 현재 저장소는 팀원이 각 모듈을 바로 이어서 개발할 수 있는 **작동 가능한 초안 골격**을 목표로 합니다. 제품 배경은 [`CONTEXT.md`](CONTEXT.md), 구현 계약은 [`SPEC.md`](SPEC.md), 역할과 일정은 [`PLAN.md`](PLAN.md)를 참고하세요.
 
@@ -20,6 +21,26 @@ uvicorn backend.main:app --reload --port 8000
 - API 문서: <http://localhost:8000/docs>
 - 상태 확인: <http://localhost:8000/api/health>
 - `OPENAI_API_KEY`가 없어도 통계 분석은 동작합니다.
+
+### Google 로그인 설정
+
+Google Cloud Console에서 OAuth 2.0 Client ID의 유형을 **웹 애플리케이션**으로 만들고,
+승인된 JavaScript 원본에 로컬 `http://localhost:5173`과 실제 배포 HTTPS 원본을 등록합니다.
+그다음 서버 환경변수만 설정합니다.
+
+```bash
+export GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
+export SESSION_SECRET="$(openssl rand -hex 32)"
+# HTTPS 배포 환경에서만 true
+export SESSION_COOKIE_SECURE=true
+```
+
+- `GOOGLE_CLIENT_SECRET`은 사용하지 않습니다. 프런트가 받은 Google ID 토큰을 FastAPI가
+  공식 `google-auth` 라이브러리로 검증하는 인증 전용 흐름입니다.
+- Client ID는 공개 식별자이므로 `/api/auth/config`가 프런트에 전달합니다.
+- 세션은 7일 만료의 `HttpOnly`, `SameSite=Lax` 서명 쿠키입니다.
+- 배포 담당자가 추가할 사용자 DB에서는 이메일 대신 `/api/auth/me`의 `google_sub`를
+  변경되지 않는 외부 사용자 키로 저장합니다.
 
 ### 프론트엔드
 
@@ -86,6 +107,7 @@ docker run --rm -p 8080:8080 --env-file .env consensus
 
 ```text
 backend/
+  auth.py              Google ID 토큰 검증과 서명 세션
   main.py              FastAPI 라우터
   storage.py           DynamoDB room 저장소와 인메모리 fallback
   models.py            요청 및 저장 모델
@@ -104,12 +126,18 @@ Dockerfile              React 빌드 + FastAPI 런타임
 
 | Method | Path | 설명 |
 |---|---|---|
+| `GET` | `/api/auth/config` | Google 로그인 공개 설정 |
+| `POST` | `/api/auth/google` | Google ID 토큰 검증 후 세션 생성 |
+| `GET` | `/api/auth/me` | 현재 로그인 사용자 |
+| `POST` | `/api/auth/logout` | 세션 종료 |
 | `POST` | `/api/rooms` | 방 생성 |
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
 | `POST` | `/api/rooms/{code}/submit` | 익명 또는 실명 의견 제출 |
 | `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 |
 
-로컬은 프로세스 메모리를 사용하고, App Runner에서는 DynamoDB로 방과 제출을 영속화합니다. 로그인과 WebSocket은 이 MVP 범위에 포함하지 않습니다.
+로컬은 프로세스 메모리를 사용하고, App Runner에서는 DynamoDB로 방과 제출을 영속화합니다.
+Google 로그인은 서명 쿠키 기반이며, 사용자 프로필 DB는 `/api/auth/me`의 `google_sub`를
+기준으로 연결할 수 있습니다. WebSocket은 사용하지 않습니다.
 
 ## 다음 작업 우선순위
 

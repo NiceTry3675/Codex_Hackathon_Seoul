@@ -1,6 +1,8 @@
 import { mockApi } from "./mock";
 import type {
   AnalysisResponse,
+  AuthConfig,
+  AuthState,
   CreateRoomPayload,
   CreateRoomResponse,
   Room,
@@ -14,6 +16,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, ""
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...init?.headers,
@@ -39,6 +42,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getAuthConfig(): Promise<AuthConfig> {
+    return request("/api/auth/config");
+  },
+
+  getAuthState(): Promise<AuthState> {
+    return request("/api/auth/me");
+  },
+
+  loginWithGoogle(credential: string): Promise<AuthState> {
+    return request("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    });
+  },
+
+  logout(): Promise<{ ok: true }> {
+    return request("/api/auth/logout", { method: "POST" });
+  },
+
   createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {
     if (USE_MOCK_API) return mockApi.createRoom(payload);
     return request("/api/rooms", { method: "POST", body: JSON.stringify(payload) });

@@ -124,8 +124,8 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
             </div>
             <p className="mt-5 text-sm leading-6 text-stone-500">
               {room.submission_mode === "named"
-                ? "이름은 제출 완료 여부에만 표시되며 개인 점수와 의견은 공개하지 않습니다."
-                : "작성자 정보는 수집하지 않으며, 개인 답변 대신 팀 전체의 분석 결과만 공유됩니다."}
+                ? "입력한 이름은 제출 완료 여부에만 표시되고 Google 계정과 연결되지 않으며, 개인 점수와 의견은 공개하지 않습니다."
+                : "이 제출에는 로그인·작성자 정보를 연결하지 않으며, 개인 답변 대신 팀 전체의 분석 결과만 공유됩니다."}
             </p>
           </section>
 

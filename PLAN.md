@@ -3,6 +3,10 @@
 > 6시간 구현 계획. 스펙은 SPEC.md, 서사는 CONTEXT.md 참조.
 > 체제: **Insight 2명 + Build 2명**. 전원이 Codex 에이전트의 발주자·검수자.
 
+> 후속 요구사항: Google 단일 로그인은 Build-B의 FastAPI 인증 경계와 프런트 버튼으로
+> 구현한다. 배포 담당자가 추가한 DynamoDB·실명 제출 흐름은 유지하고, 향후 사용자 프로필
+> DB는 `google_sub`를 기준으로 연결한다. Submission은 Google 계정과 자동 연결하지 않는다.
+
 ---
 
 ## 1. 역할 분배

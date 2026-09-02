@@ -30,6 +30,14 @@ const lines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+/** 백엔드 RoomCreate와 같은 규칙: 최대 10개, 200자 이내, 중복 금지. */
+function labelError(items: string[], name: string): string | undefined {
+  if (items.length > 10) return `${name}은(는) 최대 10개까지 입력할 수 있어요.`;
+  if (items.some((item) => item.length > 200)) return `${name}은(는) 항목당 200자 이내로 입력해 주세요.`;
+  if (new Set(items).size !== items.length) return `${name}에 같은 항목이 두 번 있어요.`;
+  return undefined;
+}
+
 function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPageProps) {
   const [question, setQuestion] = useState(DEMO_QUESTION);
   const [options, setOptions] = useState(DEMO_OPTIONS);
@@ -43,9 +51,13 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     }
   }, [isAuthenticated]);
 
+  const optionError = labelError(lines(options), "선택지");
+  const criteriaError = labelError(lines(criteria), "평가 기준");
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (submissionMode === "named" && !isAuthenticated) return;
+    if (optionError || criteriaError) return;
     void onCreate({
       question: question.trim(),
       options: lines(options),
@@ -86,6 +98,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               placeholder={"예: A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구"}
               required
             />
+            {optionError && <span className="mt-2 block text-xs font-semibold text-red-700">{optionError}</span>}
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-stone-600">평가 기준 · 한 줄에 하나</span>
@@ -96,6 +109,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               placeholder={"예: 창의성\n구현 가능성\n발표 임팩트"}
               required
             />
+            {criteriaError && <span className="mt-2 block text-xs font-semibold text-red-700">{criteriaError}</span>}
           </label>
         </div>
 
@@ -149,6 +163,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
             loading ||
             lines(options).length < 2 ||
             lines(criteria).length < 1 ||
+            Boolean(optionError || criteriaError) ||
             (submissionMode === "named" && !isAuthenticated)
           }
         >

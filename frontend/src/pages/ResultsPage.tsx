@@ -165,9 +165,10 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               </div>
             )) : <p className="text-sm text-stone-500">뚜렷한 숨은 갈등이 감지되지 않았습니다.</p>}
           </div>
-          <div className="mt-6 flex flex-wrap gap-2">
+          <p className="mt-6 text-xs font-bold text-stone-500">{analysis.current_winner}에 대한 기준별 평가 합의도</p>
+          <div className="mt-2 flex flex-wrap gap-2">
             {room.criteria.map((criterion) => {
-              const agreement = analysis.weight_agreement[criterion] ?? "MID";
+              const agreement = analysis.score_agreement[analysis.current_winner]?.[criterion] ?? "MID";
               return (
                 <span key={criterion} className="rounded-full border border-black/5 bg-white px-3 py-2 text-xs font-semibold">
                   {criterion} <span className={`ml-1 rounded-full px-2 py-0.5 ${agreementStyle[agreement]}`}>{agreement}</span>

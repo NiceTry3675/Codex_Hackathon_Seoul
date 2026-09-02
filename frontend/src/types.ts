@@ -89,3 +89,69 @@ export interface AnalysisResponse {
   /** 클라이언트 가중치 시뮬레이터용 비파괴 확장 필드. */
   mean_scores?: Record<string, Record<string, number>>;
 }
+
+/** Devil's Advocate 공방 — 백엔드 DebateState 계약(backend/models.py)과 1:1 대응. */
+export type DefenseStatus = "mitigated" | "open" | "invalid";
+export type ChallengeResolution = "resolved" | "open" | "reframed";
+export type DebateSource = "live" | "fallback";
+
+export interface EvidenceSnapshot {
+  id: string;
+  target: string;
+  low_agreement: string[];
+  concerns: string[];
+  hidden_conflicts: string[];
+  discussion_agenda: string[];
+}
+
+interface DebateMessageBase {
+  sequence: number;
+  challenge_id: string;
+  evidence_snapshot_id: string;
+  evidence_keys: string[];
+}
+
+export interface ChallengerQuestion extends DebateMessageBase {
+  role: "challenger";
+  turn: 1;
+  question: string;
+}
+
+export interface DefenderMessage extends DebateMessageBase {
+  role: "defender";
+  turn: 1;
+  status: DefenseStatus;
+  evidence: string;
+  unknowns: string;
+  mitigation: string;
+}
+
+export interface ChallengerResolutionMessage extends DebateMessageBase {
+  role: "challenger";
+  turn: 2;
+  resolution: ChallengeResolution;
+  reason: string;
+  reframed_question: string | null;
+}
+
+export type DebateMessage = ChallengerQuestion | DefenderMessage | ChallengerResolutionMessage;
+
+export interface DebateState {
+  evidence_snapshot: EvidenceSnapshot;
+  messages: DebateMessage[];
+  completed: boolean;
+  challenger_source: DebateSource;
+  resolution_source: DebateSource | null;
+}
+
+export interface DefenderAnswer {
+  challenge_id: string;
+  status: DefenseStatus;
+  evidence: string;
+  unknowns: string;
+  mitigation: string;
+}
+
+export interface DefenderTurnPayload {
+  answers: DefenderAnswer[];
+}

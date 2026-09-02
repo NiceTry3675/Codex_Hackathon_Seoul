@@ -1,7 +1,12 @@
 import type {
   AnalysisResponse,
+  ChallengerQuestion,
+  ChallengerResolutionMessage,
   CreateRoomPayload,
   CreateRoomResponse,
+  DebateState,
+  DefenderMessage,
+  DefenderTurnPayload,
   Room,
   SubmissionPayload,
   SubmitResponse,
@@ -90,9 +95,59 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
 
 const delay = (ms = 220) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const EVIDENCE_KEYS = ["target", "low_agreement", "concerns", "hidden_conflicts", "discussion_agenda"];
+const MOCK_SNAPSHOT_ID = "snapshot-mock0000000000";
+
+function createMockDebate(): DebateState {
+  const challenges = MOCK_ANALYSIS.devils_advocate?.challenges ?? [];
+  return {
+    evidence_snapshot: {
+      id: MOCK_SNAPSHOT_ID,
+      target: optionA,
+      low_agreement: ["구현 가능성", `${optionA} / 구현 가능성`],
+      concerns: ["구현 가능성", "구현 가능성", "구현 가능성"],
+      hidden_conflicts: [...MOCK_ANALYSIS.hidden_conflicts],
+      discussion_agenda: [...MOCK_ANALYSIS.discussion_agenda],
+    },
+    messages: challenges.map<ChallengerQuestion>((question, index) => ({
+      sequence: index + 1,
+      challenge_id: `c${index + 1}`,
+      turn: 1,
+      role: "challenger",
+      evidence_snapshot_id: MOCK_SNAPSHOT_ID,
+      evidence_keys: [...EVIDENCE_KEYS],
+      question,
+    })),
+    completed: false,
+    challenger_source: "fallback",
+    resolution_source: null,
+  };
+}
+
+let debate: DebateState = createMockDebate();
+
+/** 백엔드 project_open_agenda와 동일하게 open/reframed 질문만 안건으로 투영한다. */
+function projectOpenAgenda(state: DebateState): string[] {
+  if (!state.completed) return [];
+  const questions = new Map(
+    state.messages
+      .filter((message): message is ChallengerQuestion => message.role === "challenger" && message.turn === 1)
+      .map((message) => [message.challenge_id, message.question]),
+  );
+  return state.messages
+    .filter((message): message is ChallengerResolutionMessage => message.role === "challenger" && message.turn === 2)
+    .flatMap((message) => {
+      if (message.resolution === "open") return [questions.get(message.challenge_id) ?? ""];
+      if (message.resolution === "reframed" && message.reframed_question) return [message.reframed_question];
+      return [];
+    })
+    .filter(Boolean);
+}
+
 export const mockApi = {
   async createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {
     await delay();
+    debate = createMockDebate();
     room = {
       code: DEFAULT_ROOM_CODE,
       question: payload.question,
@@ -136,6 +191,80 @@ export const mockApi = {
 
   async getAnalysis(_code: string): Promise<AnalysisResponse> {
     await delay(500);
-    return structuredClone(MOCK_ANALYSIS);
+    const analysis = structuredClone(MOCK_ANALYSIS);
+    for (const item of projectOpenAgenda(debate)) {
+      if (!analysis.discussion_agenda.includes(item)) analysis.discussion_agenda.push(item);
+    }
+    return analysis;
+  },
+
+  async getDebate(_code: string): Promise<DebateState> {
+    await delay(200);
+    return structuredClone(debate);
+  },
+
+  async defendDecision(_code: string, payload: DefenderTurnPayload): Promise<DebateState> {
+    await delay(900);
+    if (debate.completed) throw new Error("debate is already complete");
+    const questions = debate.messages.filter(
+      (message): message is ChallengerQuestion => message.role === "challenger" && message.turn === 1,
+    );
+    const expected = new Set(questions.map((question) => question.challenge_id));
+    const actual = payload.answers.map((answer) => answer.challenge_id);
+    if (actual.length !== new Set(actual).size || actual.some((id) => !expected.has(id)) || actual.length !== expected.size) {
+      throw new Error("answers must match every challenge_id");
+    }
+
+    const next = structuredClone(debate);
+    const answerById = new Map(payload.answers.map((answer) => [answer.challenge_id, answer]));
+    for (const question of questions) {
+      const answer = answerById.get(question.challenge_id)!;
+      next.messages.push({
+        sequence: next.messages.length + 1,
+        turn: 1,
+        role: "defender",
+        challenge_id: question.challenge_id,
+        evidence_snapshot_id: MOCK_SNAPSHOT_ID,
+        evidence_keys: [...EVIDENCE_KEYS],
+        status: answer.status,
+        evidence: answer.evidence,
+        unknowns: answer.unknowns,
+        mitigation: answer.mitigation,
+      } satisfies DefenderMessage);
+    }
+    for (const question of questions) {
+      const answer = answerById.get(question.challenge_id)!;
+      const hasEvidence = answer.evidence.trim().length > 0 && answer.mitigation.trim().length > 0;
+      const verdict: ChallengerResolutionMessage = {
+        sequence: next.messages.length + 1,
+        turn: 2,
+        role: "challenger",
+        challenge_id: question.challenge_id,
+        evidence_snapshot_id: MOCK_SNAPSHOT_ID,
+        evidence_keys: [...EVIDENCE_KEYS],
+        ...(answer.status === "mitigated" && hasEvidence
+          ? {
+              resolution: "resolved" as const,
+              reason: "확인된 근거와 대응책이 실패 조건을 직접 해소합니다.",
+              reframed_question: null,
+            }
+          : answer.status === "invalid"
+            ? {
+                resolution: "reframed" as const,
+                reason: "질문 전제를 반박했지만 검증 방법은 아직 없어 더 작은 질문으로 좁힙니다.",
+                reframed_question: "이 전제가 틀렸다는 것을 가장 먼저 확인할 수 있는 신호는 무엇인가요?",
+              }
+            : {
+                resolution: "open" as const,
+                reason: "검증 가능한 근거가 아직 없어 이 쟁점은 열린 상태로 유지됩니다.",
+                reframed_question: null,
+              }),
+      };
+      next.messages.push(verdict);
+    }
+    next.completed = true;
+    next.resolution_source = "fallback";
+    debate = next;
+    return structuredClone(debate);
   },
 };

@@ -139,6 +139,15 @@ function App() {
     }
   };
 
+  const refreshAnalysis = async () => {
+    if (!room) return;
+    try {
+      setAnalysis(await api.getAnalysis(room.code));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "분석 결과를 다시 불러오지 못했습니다.");
+    }
+  };
+
   const navigate = (next: Stage) => {
     if (next === "results") {
       if (!room?.is_complete) return;
@@ -260,7 +269,7 @@ function App() {
           />
         )}
         {stage === "results" && analysis && room && (
-          <ResultsPage analysis={analysis} room={room} />
+          <ResultsPage analysis={analysis} room={room} onRefreshAnalysis={refreshAnalysis} />
         )}
         {stage === "results" && busy && !analysis && (
           <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 text-center">

@@ -5,6 +5,8 @@ import type {
   AuthState,
   CreateRoomPayload,
   CreateRoomResponse,
+  DebateState,
+  DefenderTurnPayload,
   Room,
   SubmissionPayload,
   SubmitResponse,
@@ -82,5 +84,18 @@ export const api = {
   getAnalysis(code: string): Promise<AnalysisResponse> {
     if (USE_MOCK_API) return mockApi.getAnalysis(code);
     return request(`/api/rooms/${encodeURIComponent(code)}/analysis`);
+  },
+
+  getDebate(code: string): Promise<DebateState> {
+    if (USE_MOCK_API) return mockApi.getDebate(code);
+    return request(`/api/rooms/${encodeURIComponent(code)}/debate`);
+  },
+
+  defendDecision(code: string, payload: DefenderTurnPayload): Promise<DebateState> {
+    if (USE_MOCK_API) return mockApi.defendDecision(code, payload);
+    return request(`/api/rooms/${encodeURIComponent(code)}/debate/defend`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import DebatePanel from "../components/DebatePanel";
 import type { Agreement, AnalysisResponse, Room } from "../types";
 
 interface ResultsPageProps {
   analysis: AnalysisResponse;
   room: Room;
+  /** 공방 판정이 끝난 뒤 논의 안건을 갱신하기 위해 분석을 다시 받는다. */
+  onRefreshAnalysis: () => Promise<void>;
 }
 
 const agreementStyle: Record<Agreement, string> = {
@@ -14,10 +17,6 @@ const agreementStyle: Record<Agreement, string> = {
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
-}
-
-function optionShortName(option: string) {
-  return option.split(". ")[0] || option;
 }
 
 function useCountUp(target: number, duration = 900) {
@@ -62,7 +61,7 @@ function sliderFill(value: number, min: number, max: number) {
   return { background: `linear-gradient(to right, #3b5e48 ${ratio}%, #e7e5e4 ${ratio}%)` };
 }
 
-function ResultsPage({ analysis, room }: ResultsPageProps) {
+function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
   const initialWeights = useMemo(
     () => Object.fromEntries(room.criteria.map((criterion) => [criterion, Math.round((analysis.team_weights[criterion] ?? 0) * 100)])),
     [analysis.team_weights, room.criteria],
@@ -107,6 +106,7 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
             <a href="#stability" className="rounded-full bg-white px-3 py-2 hover:text-ink">안정성</a>
             <a href="#conflict" className="rounded-full bg-white px-3 py-2 hover:text-ink">숨은 갈등</a>
             <a href="#flip" className="rounded-full bg-white px-3 py-2 hover:text-ink">뒤집힘 조건</a>
+            <a href="#debate" className="rounded-full bg-white px-3 py-2 hover:text-ink">AI 공방</a>
             <a href="#discussion" className="rounded-full bg-white px-3 py-2 hover:text-ink">논의 안건</a>
           </div>
         </div>
@@ -282,36 +282,24 @@ function ResultsPage({ analysis, room }: ResultsPageProps) {
           )}
         </section>
 
+        <section id="debate" className="card scroll-mt-28">
+          <p className="eyebrow">06 · Devil's Advocate</p>
+          <h2 className="section-title">AI가 결정을 공격합니다. 팀이 방어하세요.</h2>
+          <DebatePanel roomCode={room.code} fallbackAdvocate={analysis.devils_advocate} onCompleted={onRefreshAnalysis} />
+        </section>
+
         <section id="discussion" className="card scroll-mt-28">
-          <p className="eyebrow">06 · Discussion agenda</p>
+          <p className="eyebrow">07 · Discussion agenda</p>
           <h2 className="section-title">이제, 이 쟁점만 이야기하세요.</h2>
-          <div className="mt-7 grid gap-6 lg:grid-cols-2">
-            <div>
-              <h3 className="text-sm font-bold text-stone-500">팀 논의 안건</h3>
-              <ol className="mt-3 space-y-3">
-                {analysis.discussion_agenda.map((agenda, index) => (
-                  <li key={agenda} className="flex gap-3 rounded-2xl bg-moss-50 p-4 text-sm leading-6">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-moss-600 text-xs font-bold text-white">{index + 1}</span>
-                    <span>{agenda}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-stone-500">Devil’s Advocate · {analysis.devils_advocate?.target ?? optionShortName(analysis.current_winner)} 반론</h3>
-              {analysis.devils_advocate?.challenges?.length ? (
-                <ul className="mt-3 space-y-3">
-                  {analysis.devils_advocate.challenges.map((challenge) => (
-                    <li key={challenge} className="rounded-2xl bg-ink p-4 text-sm leading-6 text-white/85">
-                      <span className="mr-2 text-coral">Q.</span>{challenge}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="mt-3 rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-500">AI 반론을 불러오지 못했습니다. 통계 분석 결과에는 영향이 없습니다.</div>
-              )}
-            </div>
-          </div>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">통계가 찾은 뒤집힘 조건과 숨은 갈등, 그리고 공방에서 해소되지 않은 쟁점입니다.</p>
+          <ol className="mt-6 space-y-3">
+            {analysis.discussion_agenda.map((agenda, index) => (
+              <li key={agenda} className="flex gap-3 rounded-2xl bg-moss-50 p-4 text-sm leading-6">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-moss-600 text-xs font-bold text-white">{index + 1}</span>
+                <span>{agenda}</span>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <div className="py-5 text-center">

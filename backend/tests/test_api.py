@@ -13,6 +13,7 @@ from backend.models import (
     CriterionSuggestion,
     DefenseResolution,
     DevilsAdvocate,
+    OptionSuggestion,
     SubmissionCreate,
 )
 
@@ -653,3 +654,73 @@ def test_criteria_suggestions_validate_labels(client: TestClient):
     )
 
     assert response.status_code == 422
+
+
+def test_option_suggestions_use_the_live_provider(client: TestClient, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "suggest_options",
+        lambda question, existing, context: [
+            OptionSuggestion(name="직접 개발", why="핵심 가설에 집중하는 접근입니다."),
+            OptionSuggestion(name="외부 도구 도입", why="기존 제품을 활용하는 접근입니다."),
+        ],
+    )
+
+    response = client.post(
+        "/api/options/suggestions",
+        json={"question": "무엇을 만들까요?", "existing_options": [], "context": "회의록"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "live"
+    assert len(response.json()["options"]) == 2
+
+
+def test_option_suggestions_fall_back_without_provider(client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "suggest_options", lambda *_: None)
+
+    response = client.post(
+        "/api/options/suggestions",
+        json={"question": "무엇을 만들까요?", "existing_options": ["현재 방식 유지"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "fallback"
+    assert "현재 방식 유지" not in [item["name"] for item in response.json()["options"]]
+
+
+def test_decision_assistant_uses_live_reply(client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "answer_decision_assistant", lambda *_: "두 선택지는 충분히 다릅니다.")
+
+    response = client.post(
+        "/api/assistant/message",
+        json={
+            "question": "무엇을 만들까요?",
+            "options": ["A", "B"],
+            "criteria": ["사용자 가치"],
+            "context": "",
+            "messages": [{"role": "user", "content": "구성이 괜찮아?"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "두 선택지는 충분히 다릅니다.", "source": "live"}
+
+
+def test_decision_assistant_falls_back_without_provider(client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "answer_decision_assistant", lambda *_: None)
+
+    response = client.post(
+        "/api/assistant/message",
+        json={
+            "question": "무엇을 만들까요?",
+            "options": [],
+            "criteria": [],
+            "context": "",
+            "messages": [{"role": "user", "content": "도와줘"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "fallback"
+    assert "선택지" in response.json()["message"]

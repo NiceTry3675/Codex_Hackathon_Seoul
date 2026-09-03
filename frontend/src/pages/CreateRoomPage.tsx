@@ -2,7 +2,12 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { api } from "../api";
 import { CONTEXT_MAX_LENGTH } from "../types";
-import type { CreateRoomPayload, CriteriaSuggestResponse } from "../types";
+import type {
+  AssistantMessage,
+  CreateRoomPayload,
+  CriteriaSuggestResponse,
+  OptionSuggestResponse,
+} from "../types";
 
 interface CreateRoomPageProps {
   isAuthenticated: boolean;
@@ -48,9 +53,21 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   const [expectedMembers, setExpectedMembers] = useState(4);
   const [expiresInHours, setExpiresInHours] = useState(24);
   const [submissionMode, setSubmissionMode] = useState<"anonymous" | "named">("anonymous");
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestions, setSuggestions] = useState<CriteriaSuggestResponse>();
-  const [suggestError, setSuggestError] = useState("");
+  const [optionSuggesting, setOptionSuggesting] = useState(false);
+  const [optionSuggestions, setOptionSuggestions] = useState<OptionSuggestResponse>();
+  const [optionSuggestError, setOptionSuggestError] = useState("");
+  const [criteriaSuggesting, setCriteriaSuggesting] = useState(false);
+  const [criteriaSuggestions, setCriteriaSuggestions] = useState<CriteriaSuggestResponse>();
+  const [criteriaSuggestError, setCriteriaSuggestError] = useState("");
+  const [chatMessages, setChatMessages] = useState<AssistantMessage[]>([
+    {
+      role: "assistant",
+      content: "결정 질문, 선택지, 평가 기준을 함께 다듬어 드릴게요. 막히는 부분을 편하게 물어보세요.",
+    },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatting, setChatting] = useState(false);
+  const [chatError, setChatError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -64,6 +81,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   const optionError = labelError(optionList, "선택지");
   const criteriaError = labelError(criteriaList, "평가 기준");
   const criteriaFull = criteriaList.length >= 10;
+  const optionsFull = optionList.length >= 10;
 
   const loadContextFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -86,11 +104,37 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     }
   };
 
-  const requestSuggestions = async () => {
-    setSuggesting(true);
-    setSuggestError("");
+  const requestOptionSuggestions = async () => {
+    if (!question.trim()) {
+      setOptionSuggestError("먼저 위에 결정할 질문을 입력해 주세요.");
+      return;
+    }
+    setOptionSuggesting(true);
+    setOptionSuggestError("");
     try {
-      setSuggestions(
+      setOptionSuggestions(
+        await api.suggestOptions({
+          question: question.trim(),
+          existing_options: optionList,
+          context: context.trim(),
+        }),
+      );
+    } catch (cause) {
+      setOptionSuggestError(cause instanceof Error ? cause.message : "선택지를 제안받지 못했습니다.");
+    } finally {
+      setOptionSuggesting(false);
+    }
+  };
+
+  const requestCriteriaSuggestions = async () => {
+    if (!question.trim()) {
+      setCriteriaSuggestError("먼저 위에 결정할 질문을 입력해 주세요.");
+      return;
+    }
+    setCriteriaSuggesting(true);
+    setCriteriaSuggestError("");
+    try {
+      setCriteriaSuggestions(
         await api.suggestCriteria({
           question: question.trim(),
           options: optionList,
@@ -99,10 +143,21 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
         }),
       );
     } catch (cause) {
-      setSuggestError(cause instanceof Error ? cause.message : "기준을 제안받지 못했습니다.");
+      setCriteriaSuggestError(cause instanceof Error ? cause.message : "기준을 제안받지 못했습니다.");
     } finally {
-      setSuggesting(false);
+      setCriteriaSuggesting(false);
     }
+  };
+
+  const addOption = (name: string) => {
+    if (optionList.includes(name) || optionsFull) return;
+    setOptions((current) => {
+      const firstEmpty = current.findIndex((item) => !item.trim());
+      if (firstEmpty >= 0) {
+        return current.map((item, index) => (index === firstEmpty ? name : item));
+      }
+      return [...current, name].slice(0, 10);
+    });
   };
 
   const addCriterion = (name: string) => {
@@ -111,6 +166,34 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
       const next = current.length === 1 && !current[0].trim() ? [name] : [...current, name];
       return next.slice(0, 10);
     });
+  };
+
+  const sendChatMessage = async () => {
+    const content = chatInput.trim();
+    if (!content || chatting) return;
+    const userMessage: AssistantMessage = { role: "user", content };
+    const history = [...chatMessages, userMessage].slice(-8);
+    setChatMessages((current) => [...current, userMessage]);
+    setChatInput("");
+    setChatting(true);
+    setChatError("");
+    try {
+      const response = await api.messageAssistant({
+        question: question.trim(),
+        options: optionList,
+        criteria: criteriaList,
+        context: context.trim(),
+        messages: history,
+      });
+      setChatMessages((current) => [
+        ...current,
+        { role: "assistant", content: response.message },
+      ]);
+    } catch (cause) {
+      setChatError(cause instanceof Error ? cause.message : "도우미의 답변을 받지 못했습니다.");
+    } finally {
+      setChatting(false);
+    }
   };
 
   const updateItem = (
@@ -205,137 +288,212 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           </div>
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2">
-          <fieldset>
-            <legend className="mb-2 text-sm font-bold text-stone-600">선택지</legend>
-            <div className="space-y-2">
-              {options.map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input
-                    className={fieldClass}
-                    value={option}
-                    onChange={(event) => updateItem(setOptions, index, event.target.value)}
-                    placeholder={index === 0 ? "예: AI 보안 도구" : index === 1 ? "예: 팀 의사결정 도구" : "선택지를 입력하세요"}
-                    aria-label={`선택지 ${index + 1}`}
-                    maxLength={200}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
-                    onClick={() => removeItem(setOptions, index, 2)}
-                    disabled={options.length <= 2}
-                    aria-label={`선택지 ${index + 1} 삭제`}
-                    title="선택지 삭제"
-                  >
-                    −
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setOptions)} disabled={options.length >= 10}>
-              <span aria-hidden="true">＋</span> 선택지 추가
-            </button>
-            {optionError && <span className={errorClass}>{optionError}</span>}
-          </fieldset>
-          <fieldset>
-            <legend className="mb-2 text-sm font-bold text-stone-600">평가 기준</legend>
-            <div className="space-y-2">
-              {criteria.map((criterion, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input
-                    className={fieldClass}
-                    value={criterion}
-                    onChange={(event) => updateItem(setCriteria, index, event.target.value)}
-                    placeholder={index === 0 ? "예: 심리적 편안함" : "긍정적인 방향의 기준을 입력하세요"}
-                    aria-label={`평가 기준 ${index + 1}`}
-                    maxLength={200}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
-                    onClick={() => removeItem(setCriteria, index, 1)}
-                    disabled={criteria.length <= 1}
-                    aria-label={`평가 기준 ${index + 1} 삭제`}
-                    title="평가 기준 삭제"
-                  >
-                    −
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setCriteria)} disabled={criteria.length >= 10}>
-              <span aria-hidden="true">＋</span> 평가 기준 추가
-            </button>
-            <p className="mt-2 text-xs leading-5 text-stone-500">모든 기준은 1점이 부정적, 5점이 긍정적이 되도록 적어 주세요.</p>
-            {criteriaError && <span className={errorClass}>{criteriaError}</span>}
-          </fieldset>
-        </div>
-
-        <section className="rounded-2xl border border-dashed border-moss-500/40 bg-moss-50/60 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-stone-700">AI가 놓친 기준을 제안해요</p>
-              <p className="mt-1 text-xs text-stone-500">질문·선택지·배경 맥락을 읽고 관점을 제안합니다. 고르는 건 팀의 몫이에요.</p>
+        <section className="rounded-3xl border border-black/10 bg-stone-50/70 p-5 sm:p-6">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-moss-700 text-sm font-bold text-white">1</span>
+              <div>
+                <h2 className="font-bold text-stone-800">선택지</h2>
+                <p className="mt-1 text-sm leading-6 text-stone-500">
+                  팀이 실제로 고를 <strong className="text-stone-700">후보</strong>예요. 서로 다른 해결 방법을 적어 주세요.
+                </p>
+              </div>
             </div>
             <button
               type="button"
-              className="secondary-button"
-              onClick={() => void requestSuggestions()}
-              disabled={suggesting || !question.trim()}
+              className="secondary-button shrink-0"
+              onClick={() => void requestOptionSuggestions()}
+              disabled={optionSuggesting}
             >
-              {suggesting ? "기준을 제안하는 중…" : suggestions ? "다시 추천 받기" : "AI 추천 받기"}
+              {optionSuggesting ? "추천하는 중…" : optionSuggestions ? "다시 추천" : "✦ AI 선택지 추천"}
             </button>
           </div>
 
-          {suggestError && <span className={errorClass}>{suggestError}</span>}
-
-          {suggestions && !suggesting && (
-            <div className="mt-4 space-y-2">
-              {suggestions.source === "fallback" && (
-                <span
-                  className="inline-block rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold text-stone-500"
-                  title="AI 응답을 받지 못해 범용 기준을 보여드립니다."
+          <div className="space-y-2">
+            {options.map((option, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  className={fieldClass}
+                  value={option}
+                  onChange={(event) => updateItem(setOptions, index, event.target.value)}
+                  placeholder={index === 0 ? "예: 직접 개발" : index === 1 ? "예: 외부 솔루션 도입" : "선택지를 입력하세요"}
+                  aria-label={`선택지 ${index + 1}`}
+                  maxLength={200}
+                  required
+                />
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
+                  onClick={() => removeItem(setOptions, index, 2)}
+                  disabled={options.length <= 2}
+                  aria-label={`선택지 ${index + 1} 삭제`}
+                  title="선택지 삭제"
                 >
-                  기본 추천
-                </span>
-              )}
-              {suggestions.criteria.length === 0 && (
-                <p className="text-sm text-stone-500">추가로 제안할 기준이 없어요.</p>
-              )}
+                  −
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setOptions)} disabled={options.length >= 10}>
+            <span aria-hidden="true">＋</span> 선택지 직접 추가
+          </button>
+          {optionError && <span className={errorClass}>{optionError}</span>}
+          {optionSuggestError && <span className={errorClass}>{optionSuggestError}</span>}
+
+          {optionSuggestions && !optionSuggesting && (
+            <div className="mt-4 border-t border-black/5 pt-4">
+              <div className="mb-3 flex items-center gap-2">
+                <p className="text-xs font-bold text-moss-700">AI 추천 선택지</p>
+                {optionSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 추천</span>}
+              </div>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {optionSuggestions.options.map((item) => {
+                  const added = optionList.includes(item.name);
+                  return (
+                    <li key={item.name} className="rounded-2xl border border-black/5 bg-white p-3">
+                      <button
+                        type="button"
+                        onClick={() => addOption(item.name)}
+                        disabled={added || optionsFull}
+                        className="font-bold text-moss-700 disabled:text-moss-500"
+                      >
+                        {added ? `✓ ${item.name}` : `＋ ${item.name}`}
+                      </button>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">{item.why}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        <div className="flex justify-center" aria-hidden="true">
+          <span className="text-xl text-stone-300">↓</span>
+        </div>
+
+        <section className="rounded-3xl border border-black/10 bg-stone-50/70 p-5 sm:p-6">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-moss-700 text-sm font-bold text-white">2</span>
+              <div>
+                <h2 className="font-bold text-stone-800">평가 기준</h2>
+                <p className="mt-1 text-sm leading-6 text-stone-500">
+                  위 선택지를 비교하는 공통 <strong className="text-stone-700">잣대</strong>예요. 모든 후보에 똑같이 적용합니다.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="secondary-button shrink-0"
+              onClick={() => void requestCriteriaSuggestions()}
+              disabled={criteriaSuggesting}
+            >
+              {criteriaSuggesting ? "추천하는 중…" : criteriaSuggestions ? "다시 추천" : "✦ AI 평가 기준 추천"}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {criteria.map((criterion, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  className={fieldClass}
+                  value={criterion}
+                  onChange={(event) => updateItem(setCriteria, index, event.target.value)}
+                  placeholder={index === 0 ? "예: 실행 가능성" : "긍정적인 방향의 기준을 입력하세요"}
+                  aria-label={`평가 기준 ${index + 1}`}
+                  maxLength={200}
+                  required
+                />
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
+                  onClick={() => removeItem(setCriteria, index, 1)}
+                  disabled={criteria.length <= 1}
+                  aria-label={`평가 기준 ${index + 1} 삭제`}
+                  title="평가 기준 삭제"
+                >
+                  −
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setCriteria)} disabled={criteria.length >= 10}>
+            <span aria-hidden="true">＋</span> 평가 기준 직접 추가
+          </button>
+          <p className="mt-2 text-xs leading-5 text-stone-500">점수가 높을수록 좋은 상태가 되도록 적어 주세요. 예: ‘비용’보다 ‘비용 효율성’</p>
+          {criteriaError && <span className={errorClass}>{criteriaError}</span>}
+          {criteriaSuggestError && <span className={errorClass}>{criteriaSuggestError}</span>}
+
+          {criteriaSuggestions && !criteriaSuggesting && (
+            <div className="mt-4 border-t border-black/5 pt-4">
+              <div className="mb-3 flex items-center gap-2">
+                <p className="text-xs font-bold text-moss-700">AI 추천 평가 기준</p>
+                {criteriaSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 추천</span>}
+              </div>
               <ul className="space-y-2">
-                {suggestions.criteria.map((item) => {
+                {criteriaSuggestions.criteria.map((item) => {
                   const added = criteriaList.includes(item.name);
                   return (
                     <li key={item.name} className="rounded-2xl border border-black/5 bg-white p-3">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <button
-                        type="button"
-                        onClick={() => addCriterion(item.name)}
-                        disabled={added || criteriaFull}
-                        className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                          added
-                            ? "bg-moss-100 text-moss-700"
-                            : "border border-moss-600 bg-white text-moss-700 hover:bg-moss-600 hover:text-white disabled:opacity-40"
-                        }`}
-                      >
-                        {added ? `✓ ${item.name}` : `+ ${item.name}`}
-                      </button>
-                      <span className="text-xs text-stone-500">{item.why}</span>
+                        <button
+                          type="button"
+                          onClick={() => addCriterion(item.name)}
+                          disabled={added || criteriaFull}
+                          className="font-bold text-moss-700 disabled:text-moss-500"
+                        >
+                          {added ? `✓ ${item.name}` : `＋ ${item.name}`}
+                        </button>
+                        <span className="text-xs text-stone-500">{item.why}</span>
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-stone-600">{item.description}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-stone-500">
-                        <span className="rounded-full bg-red-50 px-2 py-1">1점 · {item.one_point}</span>
-                        <span className="rounded-full bg-moss-50 px-2 py-1">5점 · {item.five_point}</span>
+                        <span className="rounded-full bg-red-50 px-2 py-1">낮음 · {item.one_point}</span>
+                        <span className="rounded-full bg-moss-50 px-2 py-1">높음 · {item.five_point}</span>
                       </div>
                     </li>
                   );
                 })}
               </ul>
-              {criteriaFull && <p className="text-xs text-stone-500">평가 기준은 최대 10개까지예요.</p>}
             </div>
           )}
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-moss-500/30 bg-moss-50/50">
+          <div className="border-b border-moss-500/15 px-5 py-4">
+            <p className="font-bold text-stone-800">✦ AI 결정 도우미</p>
+            <p className="mt-1 text-xs text-stone-500">방을 만들기 전 질문과 항목을 대화로 다듬어 보세요. 최종 선택은 대신하지 않아요.</p>
+          </div>
+          <div className="max-h-72 space-y-3 overflow-y-auto px-5 py-4" aria-live="polite">
+            {chatMessages.map((message, index) => (
+              <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <p className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-moss-700 text-white" : "border border-black/5 bg-white text-stone-700"}`}>
+                  {message.content}
+                </p>
+              </div>
+            ))}
+            {chatting && <p className="text-xs font-semibold text-moss-700">답변을 생각하고 있어요…</p>}
+          </div>
+          <div className="flex gap-2 border-t border-moss-500/15 bg-white/60 p-3">
+            <input
+              className="min-w-0 flex-1 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm placeholder:text-stone-400"
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendChatMessage();
+                }
+              }}
+              placeholder="예: 이 선택지들이 충분히 다른가요?"
+              maxLength={2_000}
+              aria-label="AI 결정 도우미에게 보낼 메시지"
+            />
+            <button type="button" className="primary-button shrink-0" onClick={() => void sendChatMessage()} disabled={!chatInput.trim() || chatting}>
+              보내기
+            </button>
+          </div>
+          {chatError && <span className={`${errorClass} px-5 pb-4`}>{chatError}</span>}
         </section>
 
         <div className="grid gap-4 sm:grid-cols-2">

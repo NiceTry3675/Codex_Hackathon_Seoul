@@ -183,6 +183,37 @@ class CriterionSuggestion(ApiModel):
     five_point: str = Field(default="매우 긍정적", min_length=1, max_length=200)
 
 
+class OptionSuggestion(ApiModel):
+    name: str = Field(min_length=1, max_length=200)
+    why: str = Field(min_length=1, max_length=500)
+
+
+class OptionSuggestRequest(ApiModel):
+    question: str = Field(min_length=1, max_length=500)
+    existing_options: list[str] = Field(default_factory=list, max_length=10)
+    context: str = Field(default="", max_length=CONTEXT_MAX_LENGTH)
+
+    @field_validator("question")
+    @classmethod
+    def strip_question(cls, value: str) -> str:
+        return clean_question(value)
+
+    @field_validator("context")
+    @classmethod
+    def strip_context(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("existing_options")
+    @classmethod
+    def validate_labels(cls, values: list[str]) -> list[str]:
+        return clean_labels(values)
+
+
+class OptionSuggestResponse(ApiModel):
+    options: list[OptionSuggestion]
+    source: Literal["live", "fallback"]
+
+
 class CriteriaSuggestRequest(ApiModel):
     question: str = Field(min_length=1, max_length=500)
     options: list[str] = Field(default_factory=list, max_length=10)
@@ -207,6 +238,39 @@ class CriteriaSuggestRequest(ApiModel):
 
 class CriteriaSuggestResponse(ApiModel):
     criteria: list[CriterionSuggestion]
+    source: Literal["live", "fallback"]
+
+
+class AssistantMessage(ApiModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2_000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        return value.strip()
+
+
+class DecisionAssistantRequest(ApiModel):
+    question: str = Field(default="", max_length=500)
+    options: list[str] = Field(default_factory=list, max_length=10)
+    criteria: list[str] = Field(default_factory=list, max_length=10)
+    context: str = Field(default="", max_length=CONTEXT_MAX_LENGTH)
+    messages: list[AssistantMessage] = Field(min_length=1, max_length=8)
+
+    @field_validator("question", "context")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("options", "criteria")
+    @classmethod
+    def validate_labels(cls, values: list[str]) -> list[str]:
+        return clean_labels(values)
+
+
+class DecisionAssistantResponse(ApiModel):
+    message: str = Field(min_length=1, max_length=2_000)
     source: Literal["live", "fallback"]
 
 

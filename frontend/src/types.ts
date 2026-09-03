@@ -67,6 +67,40 @@ export interface CriteriaSuggestResponse {
   source: "live" | "fallback";
 }
 
+export interface OptionSuggestion {
+  name: string;
+  why: string;
+}
+
+export interface OptionSuggestPayload {
+  question: string;
+  existing_options: string[];
+  context: string;
+}
+
+export interface OptionSuggestResponse {
+  options: OptionSuggestion[];
+  source: "live" | "fallback";
+}
+
+export interface AssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface DecisionAssistantPayload {
+  question: string;
+  options: string[];
+  criteria: string[];
+  context: string;
+  messages: AssistantMessage[];
+}
+
+export interface DecisionAssistantResponse {
+  message: string;
+  source: "live" | "fallback";
+}
+
 export interface SubmissionPayload {
   participant_name?: string;
   scores: Record<string, Record<string, number>>;

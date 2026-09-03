@@ -69,6 +69,8 @@ Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통�
 | Method | Path | 설명 |
 |---|---|---|
 | `POST` | `/api/criteria/suggestions` | 질문·선택지·배경 맥락으로 평가 기준 제안 (팀이 최종 선택) |
+| `POST` | `/api/options/suggestions` | 질문·배경 맥락으로 서로 다른 선택지 후보 제안 |
+| `POST` | `/api/assistant/message` | 작성 중인 질문·선택지·평가 기준을 대화로 다듬는 생성 도우미 |
 | `POST` | `/api/rooms` | 방 생성 (배경 맥락·1~168시간 만료 설정) |
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황, 익명 참여 쿠키 발급 |
 | `POST` | `/api/rooms/{code}/submit` | 익명/실명 의견 제출 |

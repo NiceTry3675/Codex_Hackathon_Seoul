@@ -8,9 +8,13 @@ import type {
   CriteriaSuggestPayload,
   CriteriaSuggestResponse,
   DebateState,
+  DecisionAssistantPayload,
+  DecisionAssistantResponse,
   DecisionRecord,
   DecisionRecordPayload,
   DefenderTurnPayload,
+  OptionSuggestPayload,
+  OptionSuggestResponse,
   Room,
   SubmissionPayload,
   SubmitResponse,
@@ -84,6 +88,16 @@ export const api = {
   suggestCriteria(payload: CriteriaSuggestPayload): Promise<CriteriaSuggestResponse> {
     if (USE_MOCK_API) return mockApi.suggestCriteria(payload);
     return request("/api/criteria/suggestions", { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  suggestOptions(payload: OptionSuggestPayload): Promise<OptionSuggestResponse> {
+    if (USE_MOCK_API) return mockApi.suggestOptions(payload);
+    return request("/api/options/suggestions", { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  messageAssistant(payload: DecisionAssistantPayload): Promise<DecisionAssistantResponse> {
+    if (USE_MOCK_API) return mockApi.messageAssistant(payload);
+    return request("/api/assistant/message", { method: "POST", body: JSON.stringify(payload) });
   },
 
   createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {

@@ -98,6 +98,8 @@ DecisionRecord:
 | GET | `/api/auth/me` | 로그인 상태와 검증된 사용자 프로필 |
 | POST | `/api/auth/logout` | 세션 쿠키 제거 |
 | POST | `/api/criteria/suggestions` | question·options·context 기반 평가 기준·설명·1점/5점 anchor 제안 (LLM, 실패 시 범용 폴백) |
+| POST | `/api/options/suggestions` | question·context 기반 선택지 후보 제안 (LLM, 실패 시 범용 폴백) |
+| POST | `/api/assistant/message` | 작성 중인 방 설정을 바탕으로 질문·선택지·평가 기준을 대화형으로 정리 |
 | POST | `/api/rooms` | 방 생성 (question, options, criteria, context, expires_in_hours) → room code |
 | GET | `/api/rooms/{code}` | 방 정보 + 제출 수; 익명 방은 HttpOnly 참여 쿠키 발급 |
 | POST | `/api/rooms/{code}/submit` | 의견 제출 (내부에서 GPT 구조화 호출) |

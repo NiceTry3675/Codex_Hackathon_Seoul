@@ -7,10 +7,14 @@ import type {
   CriteriaSuggestPayload,
   CriteriaSuggestResponse,
   DebateState,
+  DecisionAssistantPayload,
+  DecisionAssistantResponse,
   DecisionRecord,
   DecisionRecordPayload,
   DefenderMessage,
   DefenderTurnPayload,
+  OptionSuggestPayload,
+  OptionSuggestResponse,
   Room,
   SubmissionPayload,
   SubmitResponse,
@@ -43,6 +47,13 @@ const MOCK_CRITERIA_SUGGESTIONS = [
   { name: "차별성", why: "비슷한 도구와 비교했을 때 다른 점이 분명한지 봅니다.", description: "기존 대안과 구별되는 가치가 있는 정도입니다.", one_point: "기존 대안과 거의 같음", five_point: "차별점이 매우 분명함" },
   { name: "확장 가능성", why: "해커톤 이후에도 이어서 발전시킬 여지가 있는지 따집니다.", description: "초기 결과를 더 큰 제품으로 발전시킬 수 있는 정도입니다.", one_point: "추가 발전이 매우 어려움", five_point: "자연스럽게 확장할 수 있음" },
   { name: "구현 가능성", why: "남은 시간 안에 실제로 만들 수 있는지 봅니다.", description: "현재 인력과 시간으로 완성할 수 있는 정도입니다.", one_point: "완성 가능성이 매우 낮음", five_point: "충분히 완성할 수 있음" },
+];
+
+const MOCK_OPTION_SUGGESTIONS = [
+  { name: "현재 방식 유지", why: "변화하지 않는 경우도 같은 조건에서 비교할 수 있습니다." },
+  { name: "핵심 기능만 직접 개발", why: "제한된 시간 안에 가장 중요한 가설에 집중할 수 있습니다." },
+  { name: "기존 도구 조합", why: "이미 검증된 구성요소를 활용하는 접근을 비교할 수 있습니다." },
+  { name: "작게 시험 운영", why: "작은 범위에서 반응을 확인한 뒤 확대 여부를 판단할 수 있습니다." },
 ];
 
 export const MOCK_ANALYSIS: AnalysisResponse = {
@@ -164,6 +175,15 @@ function projectOpenAgenda(state: DebateState): string[] {
 }
 
 export const mockApi = {
+  async suggestOptions(payload: OptionSuggestPayload): Promise<OptionSuggestResponse> {
+    await delay(650);
+    const existing = new Set(payload.existing_options.map((item) => item.replace(/\s+/g, "")));
+    return {
+      options: MOCK_OPTION_SUGGESTIONS.filter((item) => !existing.has(item.name.replace(/\s+/g, ""))),
+      source: "fallback",
+    };
+  },
+
   async suggestCriteria(payload: CriteriaSuggestPayload): Promise<CriteriaSuggestResponse> {
     await delay(700);
     const existing = new Set(payload.existing_criteria.map((item) => item.replace(/\s+/g, "")));
@@ -171,6 +191,18 @@ export const mockApi = {
       criteria: MOCK_CRITERIA_SUGGESTIONS.filter((item) => !existing.has(item.name.replace(/\s+/g, ""))),
       source: "fallback",
     };
+  },
+
+  async messageAssistant(payload: DecisionAssistantPayload): Promise<DecisionAssistantResponse> {
+    await delay(500);
+    const message = !payload.question.trim()
+      ? "먼저 팀이 답해야 할 결정 질문을 한 문장으로 적어 주세요."
+      : payload.options.length < 2
+        ? "선택지는 팀이 실제로 고를 후보예요. 서로 겹치지 않는 대안을 두 개 이상 적어 보세요."
+        : payload.criteria.length === 0
+          ? "평가 기준은 모든 선택지를 비교하는 공통 잣대예요. 실행 가능성이나 사용자 가치부터 생각해 보세요."
+          : "선택지는 후보, 평가 기준은 후보를 비교하는 잣대예요. 지금 항목들이 서로 겹치지 않는지 함께 확인해 볼까요?";
+    return { message, source: "fallback" };
   },
 
   async createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {

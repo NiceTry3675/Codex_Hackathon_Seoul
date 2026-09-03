@@ -42,12 +42,16 @@ from .debate import (
     validate_answers,
 )
 from .llm import (
+    answer_decision_assistant,
     evaluate_defenses,
     fallback_criteria_suggestions,
+    fallback_decision_assistant,
     fallback_devils_advocate,
+    fallback_option_suggestions,
     generate_devils_advocate,
     parse_opinion,
     suggest_criteria,
+    suggest_options,
 )
 from .models import (
     AnalysisResponse,
@@ -56,12 +60,16 @@ from .models import (
     CriteriaSuggestRequest,
     CriteriaSuggestResponse,
     DebateState,
+    DecisionAssistantRequest,
+    DecisionAssistantResponse,
     DecisionRecord,
     DecisionRecordCreate,
     DefenderTurnRequest,
     GoogleCredential,
     HealthResponse,
     LogoutResponse,
+    OptionSuggestRequest,
+    OptionSuggestResponse,
     Room,
     RoomCreate,
     RoomResponse,
@@ -365,6 +373,62 @@ def suggest_room_criteria(payload: CriteriaSuggestRequest) -> CriteriaSuggestRes
             source="fallback",
         )
     return CriteriaSuggestResponse(criteria=suggestions, source="live")
+
+
+@app.post("/api/options/suggestions", response_model=OptionSuggestResponse)
+def suggest_room_options(payload: OptionSuggestRequest) -> OptionSuggestResponse:
+    """Offer distinct candidates while leaving the decision to the team."""
+
+    try:
+        suggestions = suggest_options(
+            payload.question,
+            payload.existing_options,
+            payload.context,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Unexpected option suggestion provider failure error=%s",
+            type(exc).__name__,
+        )
+        suggestions = None
+    if suggestions is None:
+        return OptionSuggestResponse(
+            options=fallback_option_suggestions(payload.existing_options),
+            source="fallback",
+        )
+    return OptionSuggestResponse(options=suggestions, source="live")
+
+
+@app.post("/api/assistant/message", response_model=DecisionAssistantResponse)
+def message_decision_assistant(
+    payload: DecisionAssistantRequest,
+) -> DecisionAssistantResponse:
+    """Help refine a room setup without choosing or scoring an option."""
+
+    try:
+        message = answer_decision_assistant(
+            payload.question,
+            payload.options,
+            payload.criteria,
+            payload.context,
+            payload.messages,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Unexpected decision assistant provider failure error=%s",
+            type(exc).__name__,
+        )
+        message = None
+    if message is None:
+        return DecisionAssistantResponse(
+            message=fallback_decision_assistant(
+                payload.question,
+                payload.options,
+                payload.criteria,
+            ),
+            source="fallback",
+        )
+    return DecisionAssistantResponse(message=message, source="live")
 
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)

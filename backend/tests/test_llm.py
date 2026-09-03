@@ -332,3 +332,52 @@ def test_fallback_criteria_skip_existing_names():
     assert "실행 가능성" not in names
     assert len(names) == 3
     assert all(item.why for item in result)
+
+
+def test_suggest_options_drops_existing_and_duplicate_names(monkeypatch):
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "options": [
+                {"name": "직접 개발", "why": "이미 적은 후보입니다."},
+                {"name": "외부 도구 도입", "why": "기존 제품을 활용하는 방법을 비교합니다."},
+                {"name": "외부-도구 도입", "why": "같은 접근을 다르게 쓴 표현입니다."},
+                {"name": "작게 시험 운영", "why": "작은 범위에서 먼저 가설을 확인합니다."},
+            ]
+        },
+    )
+
+    result = llm.suggest_options("어떤 방식으로 만들까요?", ["직접 개발"], "회의록")
+
+    assert result is not None
+    assert [item.name for item in result] == ["외부 도구 도입", "작게 시험 운영"]
+
+
+def test_fallback_option_suggestions_skip_existing_names():
+    result = llm.fallback_option_suggestions(["현재 방식 유지"])
+
+    assert result
+    assert "현재 방식 유지" not in [item.name for item in result]
+
+
+def test_answer_decision_assistant_passes_room_state_and_history(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, payload, **kwargs):
+        captured["payload"] = payload
+        return {"message": "선택지는 후보이고 평가 기준은 비교하는 잣대예요."}
+
+    monkeypatch.setattr(llm, "_chat_json", fake_chat_json)
+    messages = [llm.AssistantMessage(role="user", content="차이가 뭐야?")]
+
+    result = llm.answer_decision_assistant("무엇을 만들까요?", ["A", "B"], ["가치"], "맥락", messages)
+
+    assert result == "선택지는 후보이고 평가 기준은 비교하는 잣대예요."
+    assert captured["payload"]["conversation"] == [{"role": "user", "content": "차이가 뭐야?"}]
+
+
+def test_fallback_decision_assistant_guides_incomplete_setup():
+    assert "결정 질문" in llm.fallback_decision_assistant("", [], [])
+    assert "선택지" in llm.fallback_decision_assistant("무엇을 할까요?", ["A"], [])
+    assert "평가 기준" in llm.fallback_decision_assistant("무엇을 할까요?", ["A", "B"], [])

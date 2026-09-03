@@ -77,8 +77,8 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
   };
 
   const copyCode = async () => {
-    if (!room) return;
-    await navigator.clipboard.writeText(room.code);
+    if (code.length !== 6) return;
+    await navigator.clipboard.writeText(code);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
@@ -107,49 +107,27 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
             required
           />
         </label>
-        <button type="submit" className="primary-button self-end" disabled={loading || code.length !== 6}>
-          {loading ? "확인 중…" : "방 참여하기"}
-        </button>
+        <div className="flex gap-2 self-end">
+          <button
+            type="button"
+            className="secondary-button inline-flex items-center gap-2 whitespace-nowrap"
+            onClick={() => void copyCode()}
+            disabled={code.length !== 6}
+            aria-label={`방 코드 ${code} 복사`}
+          >
+            <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+            <span aria-live="polite">{copied ? "복사완료" : "코드복사"}</span>
+          </button>
+          <button type="submit" className="primary-button whitespace-nowrap" disabled={loading || code.length !== 6}>
+            {loading ? "확인 중…" : "방 참여하기"}
+          </button>
+        </div>
       </form>
 
       {!room ? (
         <div className="mt-12 text-center text-sm text-stone-500">방 코드를 입력해 주세요.</div>
       ) : (
         <form onSubmit={submitForm} className="mt-8 space-y-6">
-          <section className="card overflow-hidden">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="eyebrow">Room {room.code}</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">{room.question}</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void copyCode()}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold"
-                  aria-label={`방 코드 ${room.code} 복사`}
-                >
-                  <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
-                  <span aria-live="polite">{copied ? "복사됐어요" : `코드 ${room.code} 복사`}</span>
-                </button>
-                <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm font-semibold text-moss-700">
-                  <span aria-hidden="true">◉</span> {room.submission_mode === "named" ? "실명 제출" : "익명 제출"}
-                </div>
-              </div>
-            </div>
-            {room.context && (
-              <details className="mt-5 rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" open={room.context.length <= 200}>
-                <summary className="cursor-pointer text-sm font-bold text-stone-600">배경 맥락</summary>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-stone-600">{room.context}</p>
-              </details>
-            )}
-            <p className="mt-5 text-sm leading-6 text-stone-500">
-              {room.submission_mode === "named"
-                ? "입력한 이름은 제출 완료 여부에만 표시되고 Google 계정과 연결되지 않으며, 개인 점수와 의견은 공개하지 않습니다."
-                : "이 제출에는 로그인·IP·작성자 정보를 연결하지 않습니다. 같은 브라우저의 반복 제출은 차단되지만 시크릿 창이나 다른 기기를 이용한 우회까지 막을 수는 없습니다."}
-            </p>
-          </section>
-
           {room.submission_mode === "named" && (
             <section className="card">
               <label className="block">

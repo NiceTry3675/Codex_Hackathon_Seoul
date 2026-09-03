@@ -42,7 +42,7 @@ export interface CreateRoomPayload {
 export type CreateRoomResponse = Room;
 
 /** 백엔드 RoomCreate.context / CriteriaSuggestRequest.context 상한과 동일. */
-export const CONTEXT_MAX_LENGTH = 20_000;
+export const CONTEXT_MAX_LENGTH = 50_000;
 
 export interface CriterionSuggestion {
   name: string;

@@ -468,7 +468,7 @@ def test_room_context_is_optional_and_round_trips(client: TestClient):
 
 
 def test_room_context_length_is_bounded(client: TestClient):
-    payload = {**room_payload(), "context": "가" * 20_001}
+    payload = {**room_payload(), "context": "가" * 50_001}
 
     response = client.post("/api/rooms", json=payload)
 

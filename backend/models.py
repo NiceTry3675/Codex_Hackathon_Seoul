@@ -126,7 +126,7 @@ class DebateState(ApiModel):
     resolution_source: Literal["live", "fallback"] | None = None
 
 
-CONTEXT_MAX_LENGTH = 20_000
+CONTEXT_MAX_LENGTH = 50_000
 
 
 def clean_labels(values: list[str]) -> list[str]:

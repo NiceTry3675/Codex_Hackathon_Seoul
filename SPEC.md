@@ -54,7 +54,7 @@ Room:
   question: str            # "해커톤 아이디어 선택"
   options: list[str]       # ["A. AI 보안 도구", "B. 의사결정 도구", ...]
   criteria: list[str]      # ["창의성", "구현 가능성", "발표 임팩트"]
-  context: str             # 배경 맥락 (선택, 최대 20,000자; 한 줄 메모부터 회의록 전문까지)
+  context: str             # 배경 맥락 (선택, 최대 50,000자; 한 줄 메모부터 회의록 전문까지)
   expected_members: int    # 기본 4, 대기 화면 완료 판단용
   submissions: list[Submission]
 

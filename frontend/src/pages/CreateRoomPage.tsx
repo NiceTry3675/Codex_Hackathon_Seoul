@@ -12,7 +12,6 @@ interface CreateRoomPageProps {
 const DEMO_QUESTION = "6시간 해커톤에서 어떤 아이디어를 만들까요?";
 const DEMO_OPTIONS = "A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구";
 const DEMO_CRITERIA = "창의성\n구현 가능성\n발표 임팩트";
-const CONTEXT_FILE_MAX_BYTES = 1_000_000;
 
 const submissionModes = [
   {
@@ -72,10 +71,6 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > CONTEXT_FILE_MAX_BYTES) {
-      setContextNotice("1MB 이하의 텍스트 파일만 불러올 수 있어요.");
-      return;
-    }
     let text: string;
     try {
       text = (await file.text()).replace(/\r\n/g, "\n").trim();

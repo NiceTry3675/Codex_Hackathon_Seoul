@@ -71,6 +71,52 @@ def test_room_submission_and_analysis_flow(client: TestClient):
     assert sum(result["stability"].values()) == pytest.approx(1.0)
 
 
+def test_decision_record_compares_initial_analysis_and_final_choice(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    code = room["code"]
+
+    assert client.get(f"/api/rooms/{code}/decision-record").status_code == 404
+    assert client.post(
+        f"/api/rooms/{code}/decision-record",
+        json={"final_choice": "B", "final_reason": "분석 전"},
+    ).status_code == 409
+
+    client.post(f"/api/rooms/{code}/submit", json=submission_payload()).raise_for_status()
+    created = client.post(
+        f"/api/rooms/{code}/decision-record",
+        json={"final_choice": "B", "final_reason": " 실행 가능성을 우선하기로 했습니다. "},
+    )
+
+    assert created.status_code == 201
+    record = created.json()
+    assert record["initial_majority_choice"] == "A"
+    assert record["analysis_winner"] == "A"
+    assert record["robust_choice"] in {"A", "B"}
+    assert record["final_choice"] == "B"
+    assert record["final_reason"] == "실행 가능성을 우선하기로 했습니다."
+    assert record["changed_from_initial"] is True
+    assert record["decided_at"].endswith("Z")
+    assert client.get(f"/api/rooms/{code}/decision-record").json() == record
+    assert client.post(
+        f"/api/rooms/{code}/decision-record",
+        json={"final_choice": "A", "final_reason": "다시 변경"},
+    ).status_code == 409
+
+
+def test_decision_record_rejects_unknown_choice_without_llm(client: TestClient, monkeypatch):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload()).raise_for_status()
+    monkeypatch.setattr(main, "generate_devils_advocate", lambda *_: (_ for _ in ()).throw(RuntimeError("offline")))
+
+    response = client.post(
+        f"/api/rooms/{room['code']}/decision-record",
+        json={"final_choice": "C", "final_reason": "알 수 없는 선택"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "final_choice must be one of the room options"
+
+
 def test_analysis_requires_a_submission(client: TestClient):
     room = client.post("/api/rooms", json=room_payload()).json()
 

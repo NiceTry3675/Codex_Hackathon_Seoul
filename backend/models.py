@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -176,6 +177,9 @@ class RoomCreate(ApiModel):
 class CriterionSuggestion(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     why: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="이 기준에서 각 선택지가 얼마나 긍정적인지 평가합니다.", min_length=1, max_length=500)
+    one_point: str = Field(default="매우 부정적", min_length=1, max_length=200)
+    five_point: str = Field(default="매우 긍정적", min_length=1, max_length=200)
 
 
 class CriteriaSuggestRequest(ApiModel):
@@ -205,6 +209,26 @@ class CriteriaSuggestResponse(ApiModel):
     source: Literal["live", "fallback"]
 
 
+class DecisionRecordCreate(ApiModel):
+    final_choice: str = Field(min_length=1, max_length=200)
+    final_reason: str = Field(min_length=1, max_length=2_000)
+
+    @field_validator("final_choice", "final_reason")
+    @classmethod
+    def strip_decision_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class DecisionRecord(ApiModel):
+    initial_majority_choice: str
+    analysis_winner: str
+    robust_choice: str
+    final_choice: str
+    final_reason: str
+    decided_at: datetime
+    changed_from_initial: bool
+
+
 class Room(ApiModel):
     code: str
     question: str
@@ -218,6 +242,7 @@ class Room(ApiModel):
     devils_advocate_generated: bool = False
     devils_advocate_source: Literal["live", "fallback"] | None = None
     debate: DebateState | None = None
+    decision_record: DecisionRecord | None = None
 
 
 class RoomResponse(ApiModel):

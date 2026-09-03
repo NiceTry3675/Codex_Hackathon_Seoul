@@ -7,6 +7,8 @@ import type {
   CriteriaSuggestPayload,
   CriteriaSuggestResponse,
   DebateState,
+  DecisionRecord,
+  DecisionRecordPayload,
   DefenderMessage,
   DefenderTurnPayload,
   Room,
@@ -34,11 +36,11 @@ let room: Room = {
 };
 
 const MOCK_CRITERIA_SUGGESTIONS = [
-  { name: "사용자 가치", why: "심사위원이 아니라 실제 사용자가 왜 쓰는지 설명할 수 있는지 봅니다." },
-  { name: "기술 대응력", why: "기술 문제가 생겨도 제한 시간 안에 해결하거나 우회할 수 있는지 확인합니다." },
-  { name: "차별성", why: "비슷한 도구와 비교했을 때 한 문장으로 다른 점을 말할 수 있는지 봅니다." },
-  { name: "확장 가능성", why: "해커톤 이후에도 이어서 발전시킬 여지가 있는지 따집니다." },
-  { name: "구현 가능성", why: "네 명이 남은 시간 안에 실제로 만들 수 있는지 봅니다." },
+  { name: "사용자 가치", why: "실제 사용자가 왜 쓰는지 설명할 수 있는지 봅니다.", description: "사용자의 문제를 실질적으로 해결하는 정도입니다.", one_point: "사용자에게 거의 도움이 되지 않음", five_point: "사용자 문제를 매우 잘 해결함" },
+  { name: "기술 대응력", why: "기술 문제가 생겨도 제한 시간 안에 해결하거나 우회할 수 있는지 확인합니다.", description: "기술적 장애를 해결하거나 우회할 수 있는 정도입니다.", one_point: "문제가 생기면 진행하기 어려움", five_point: "대체 경로로 쉽게 대응 가능" },
+  { name: "차별성", why: "비슷한 도구와 비교했을 때 다른 점이 분명한지 봅니다.", description: "기존 대안과 구별되는 가치가 있는 정도입니다.", one_point: "기존 대안과 거의 같음", five_point: "차별점이 매우 분명함" },
+  { name: "확장 가능성", why: "해커톤 이후에도 이어서 발전시킬 여지가 있는지 따집니다.", description: "초기 결과를 더 큰 제품으로 발전시킬 수 있는 정도입니다.", one_point: "추가 발전이 매우 어려움", five_point: "자연스럽게 확장할 수 있음" },
+  { name: "구현 가능성", why: "남은 시간 안에 실제로 만들 수 있는지 봅니다.", description: "현재 인력과 시간으로 완성할 수 있는 정도입니다.", one_point: "완성 가능성이 매우 낮음", five_point: "충분히 완성할 수 있음" },
 ];
 
 export const MOCK_ANALYSIS: AnalysisResponse = {
@@ -139,6 +141,7 @@ function createMockDebate(): DebateState {
 }
 
 let debate: DebateState = createMockDebate();
+let decisionRecord: DecisionRecord | undefined;
 
 /** 백엔드 project_open_agenda와 동일하게 open/reframed 질문만 안건으로 투영한다. */
 function projectOpenAgenda(state: DebateState): string[] {
@@ -171,6 +174,7 @@ export const mockApi = {
   async createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {
     await delay();
     debate = createMockDebate();
+    decisionRecord = undefined;
     room = {
       code: DEFAULT_ROOM_CODE,
       question: payload.question,
@@ -290,5 +294,26 @@ export const mockApi = {
     next.resolution_source = "fallback";
     debate = next;
     return structuredClone(debate);
+  },
+
+  async getDecisionRecord(_code: string): Promise<DecisionRecord> {
+    await delay(120);
+    if (!decisionRecord) throw new Error("decision record not found");
+    return structuredClone(decisionRecord);
+  },
+
+  async createDecisionRecord(_code: string, payload: DecisionRecordPayload): Promise<DecisionRecord> {
+    await delay(220);
+    if (decisionRecord) throw new Error("decision record already exists");
+    decisionRecord = {
+      initial_majority_choice: optionA,
+      analysis_winner: MOCK_ANALYSIS.current_winner,
+      robust_choice: MOCK_ANALYSIS.robust_choice,
+      final_choice: payload.final_choice,
+      final_reason: payload.final_reason,
+      decided_at: new Date().toISOString(),
+      changed_from_initial: payload.final_choice !== optionA,
+    };
+    return structuredClone(decisionRecord);
   },
 };

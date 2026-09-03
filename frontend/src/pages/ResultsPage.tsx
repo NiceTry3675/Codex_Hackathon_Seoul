@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { api } from "../api";
 import DebatePanel from "../components/DebatePanel";
 import { allocatePercentages, calculateRanking, rebalancePercentages } from "../calculations";
-import type { Agreement, AnalysisResponse, Room } from "../types";
+import type { Agreement, AnalysisResponse, DecisionRecord, Room } from "../types";
 
 interface ResultsPageProps {
   analysis: AnalysisResponse;
@@ -62,6 +63,77 @@ function StabilityDonut({ value }: { value: number }) {
         {percent(animated)}
       </div>
     </div>
+  );
+}
+
+function DecisionRecordPanel({ room, analysis }: { room: Room; analysis: AnalysisResponse }) {
+  const [record, setRecord] = useState<DecisionRecord>();
+  const [finalChoice, setFinalChoice] = useState(analysis.current_winner);
+  const [finalReason, setFinalReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void api.getDecisionRecord(room.code).then((item) => active && setRecord(item)).catch(() => undefined);
+    return () => { active = false; };
+  }, [room.code]);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      setRecord(await api.createDecisionRecord(room.code, {
+        final_choice: finalChoice,
+        final_reason: finalReason.trim(),
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "최종 결정을 기록하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (record) {
+    return (
+      <div className="mt-6 space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl bg-stone-50 p-4"><span className="text-xs text-stone-500">최초 다수 선택</span><strong className="mt-1 block">{record.initial_majority_choice}</strong></div>
+          <div className="rounded-2xl bg-stone-50 p-4"><span className="text-xs text-stone-500">분석 당시 1위</span><strong className="mt-1 block">{record.analysis_winner}</strong></div>
+          <div className="rounded-2xl bg-moss-50 p-4"><span className="text-xs text-moss-700">가장 견고한 선택</span><strong className="mt-1 block text-moss-800">{record.robust_choice}</strong></div>
+        </div>
+        <div className="rounded-3xl bg-ink p-6 text-white">
+          <span className="text-xs font-bold uppercase tracking-widest text-moss-100">Final decision</span>
+          <strong className="mt-2 block text-2xl">{record.final_choice}</strong>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/75">{record.final_reason}</p>
+          <p className="mt-4 text-xs text-white/50">{new Date(record.decided_at).toLocaleString("ko-KR")} · {record.changed_from_initial ? "최초 선택에서 변경됨" : "최초 선택 유지"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="mt-6 space-y-4">
+      <fieldset>
+        <legend className="text-sm font-bold text-stone-600">논의 후 최종 선택</legend>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {room.options.map((option) => (
+            <label key={option} className={`cursor-pointer rounded-2xl border p-3 text-sm ${finalChoice === option ? "border-moss-500 bg-moss-50 font-semibold" : "border-black/10 bg-stone-50"}`}>
+              <input className="mr-2" type="radio" name="final-choice" value={option} checked={finalChoice === option} onChange={() => setFinalChoice(option)} />
+              {option}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="block text-sm font-bold text-stone-600">
+        최종 선택 이유
+        <textarea className="mt-2 min-h-28 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-normal leading-6" value={finalReason} onChange={(event) => setFinalReason(event.target.value)} maxLength={2000} required placeholder="논의에서 확인한 근거와 감수하기로 한 위험을 남겨 주세요." />
+      </label>
+      {error && <p className="text-sm font-semibold text-red-700" role="alert">{error}</p>}
+      <button type="submit" className="primary-button" disabled={saving || !finalReason.trim()}>{saving ? "기록 중…" : "최종 결정 기록하기"}</button>
+      <p className="text-xs text-stone-500">기록은 최초 판단과 최종 판단의 차이를 보존하기 위해 저장 후 수정할 수 없습니다.</p>
+    </form>
   );
 }
 
@@ -332,6 +404,13 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               </li>
             ))}
           </ol>
+        </section>
+
+        <section className="card">
+          <p className="eyebrow">08 · Decision record</p>
+          <h2 className="section-title">팀이 내린 최종 결정을 남기세요.</h2>
+          <p className="mt-3 text-sm leading-6 text-stone-500">최초 선택, 분석 신호, 최종 선택을 함께 보존합니다. 분석은 결정을 대신하지 않습니다.</p>
+          <DecisionRecordPanel room={room} analysis={analysis} />
         </section>
 
       </div>

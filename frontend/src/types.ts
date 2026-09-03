@@ -47,6 +47,9 @@ export const CONTEXT_MAX_LENGTH = 50_000;
 export interface CriterionSuggestion {
   name: string;
   why: string;
+  description: string;
+  one_point: string;
+  five_point: string;
 }
 
 export interface CriteriaSuggestPayload {
@@ -113,6 +116,21 @@ export interface AnalysisResponse {
   devils_advocate?: DevilsAdvocate | null;
   /** 클라이언트 가중치 시뮬레이터용 비파괴 확장 필드. */
   mean_scores?: Record<string, Record<string, number>>;
+}
+
+export interface DecisionRecordPayload {
+  final_choice: string;
+  final_reason: string;
+}
+
+export interface DecisionRecord {
+  initial_majority_choice: string;
+  analysis_winner: string;
+  robust_choice: string;
+  final_choice: string;
+  final_reason: string;
+  decided_at: string;
+  changed_from_initial: boolean;
 }
 
 /** Devil's Advocate 공방 — 백엔드 DebateState 계약(backend/models.py)과 1:1 대응. */

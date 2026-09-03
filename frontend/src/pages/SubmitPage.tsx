@@ -174,7 +174,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 {completedScores}/{totalScores}
               </span>
             </div>
-            <p className="mt-3 text-sm text-stone-500">1점은 매우 낮음, 5점은 매우 높음입니다.</p>
+            <p className="mt-3 text-sm text-stone-500">모든 기준에서 1점은 부정적, 5점은 긍정적입니다.</p>
             {attempted && completedScores !== totalScores && (
               <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
                 아직 평가하지 않은 항목이 {totalScores - completedScores}개 있어요. 붉게 표시된 항목을 채워 주세요.
@@ -186,7 +186,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 <div key={option} className="rounded-2xl border border-black/5 bg-stone-50/70 p-4 sm:p-5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <h3 className="font-semibold">{option}</h3>
-                    <span className="text-xs text-stone-500">1 낮음 · 5 높음</span>
+                    <span className="text-xs text-stone-500">1 부정적 · 5 긍정적</span>
                   </div>
                   <div className="mt-4 space-y-4">
                     {room.criteria.map((criterion) => {

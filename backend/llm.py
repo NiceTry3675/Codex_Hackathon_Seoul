@@ -130,8 +130,11 @@ CRITERIA_SUGGESTION_SCHEMA = {
                 "properties": {
                     "name": {"type": "string"},
                     "why": {"type": "string"},
+                    "description": {"type": "string"},
+                    "one_point": {"type": "string"},
+                    "five_point": {"type": "string"},
                 },
-                "required": ["name", "why"],
+                "required": ["name", "why", "description", "one_point", "five_point"],
                 "additionalProperties": False,
             },
         }
@@ -159,18 +162,20 @@ EVIDENCE RULES
 OUTPUT RULES
 - Return 3 to 5 criteria. Each name is a short Korean noun phrase suitable as a column label.
 - Each why is one short Korean sentence explaining what this criterion would reveal for this decision.
+- description explains what to evaluate. one_point and five_point are short anchors for the
+  negative and positive ends. Every criterion must use the same positive direction.
 - Names and reasons must contain no digits.
 - Cover different failure modes (for example feasibility, cost, risk, reversibility, stakeholder impact)
   instead of near-duplicates."""
 
 CRITERIA_NAME_MAX_LENGTH = 30
 
-FALLBACK_CRITERIA: list[tuple[str, str]] = [
-    ("실행 가능성", "지금 가진 인력과 시간으로 실제로 해낼 수 있는지 봅니다."),
-    ("비용과 자원", "선택에 들어가는 돈, 시간, 사람의 부담을 비교합니다."),
-    ("기대 효과", "목표에 얼마나 직접적으로 기여하는지 확인합니다."),
-    ("리스크 대응력", "문제가 생겨도 피해를 줄이고 빠르게 대응할 수 있는지 봅니다."),
-    ("되돌릴 수 있는가", "나중에 방향을 바꾸는 것이 얼마나 쉬운지 따집니다."),
+FALLBACK_CRITERIA: list[tuple[str, str, str, str, str]] = [
+    ("실행 가능성", "지금 가진 인력과 시간으로 실제로 해낼 수 있는지 봅니다.", "현재 자원과 제약 안에서 실행할 수 있는 정도입니다.", "실행하기 매우 어려움", "충분히 실행할 수 있음"),
+    ("비용 효율성", "들어가는 돈, 시간, 사람에 비해 얻는 효과를 비교합니다.", "필요한 자원 대비 기대 효과가 충분한지 평가합니다.", "비용 대비 효과가 매우 낮음", "비용 대비 효과가 매우 높음"),
+    ("기대 효과", "목표에 얼마나 직접적으로 기여하는지 확인합니다.", "선택이 팀의 목표 달성에 기여하는 정도입니다.", "기여가 거의 없음", "매우 크게 기여함"),
+    ("리스크 대응력", "문제가 생겨도 피해를 줄이고 빠르게 대응할 수 있는지 봅니다.", "문제가 발생했을 때 완화하거나 우회할 수 있는 정도입니다.", "대응하거나 우회하기 어려움", "쉽고 빠르게 대응할 수 있음"),
+    ("전환 용이성", "나중에 방향을 바꾸는 것이 얼마나 쉬운지 따집니다.", "선택이 맞지 않을 때 다른 방향으로 전환하기 쉬운 정도입니다.", "전환 비용이 매우 큼", "쉽게 전환할 수 있음"),
 ]
 
 
@@ -457,7 +462,18 @@ def suggest_criteria(
         if not key or key in seen:
             continue
         seen.add(key)
-        cleaned.append(CriterionSuggestion(name=name, why=why))
+        description = item.get("description")
+        one_point = item.get("one_point")
+        five_point = item.get("five_point")
+        cleaned.append(
+            CriterionSuggestion(
+                name=name,
+                why=why,
+                description=(description.strip() if isinstance(description, str) and description.strip() else why),
+                one_point=(one_point.strip() if isinstance(one_point, str) and one_point.strip() else f"{name}이 매우 낮음"),
+                five_point=(five_point.strip() if isinstance(five_point, str) and five_point.strip() else f"{name}이 매우 높음"),
+            )
+        )
     if len(cleaned) < 2:
         return None
     return cleaned[:5]
@@ -472,7 +488,13 @@ def fallback_criteria_suggestions(existing_criteria: list[str]) -> list[Criterio
     if _normalize_question("리스크") in seen:
         seen.add(_normalize_question("리스크 대응력"))
     return [
-        CriterionSuggestion(name=name, why=why)
-        for name, why in FALLBACK_CRITERIA
+        CriterionSuggestion(
+            name=name,
+            why=why,
+            description=description,
+            one_point=one_point,
+            five_point=five_point,
+        )
+        for name, why, description, one_point, five_point in FALLBACK_CRITERIA
         if _normalize_question(name) not in seen
     ]

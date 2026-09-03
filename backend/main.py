@@ -6,6 +6,7 @@ import logging
 import os
 import secrets
 import string
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
@@ -52,6 +53,8 @@ from .models import (
     CriteriaSuggestRequest,
     CriteriaSuggestResponse,
     DebateState,
+    DecisionRecord,
+    DecisionRecordCreate,
     DefenderTurnRequest,
     GoogleCredential,
     HealthResponse,
@@ -434,6 +437,70 @@ def get_analysis(
             result["discussion_agenda"].append(agenda_item)
 
     return AnalysisResponse.model_validate(result)
+
+
+@app.get("/api/rooms/{code}/decision-record", response_model=DecisionRecord)
+def get_decision_record(
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DecisionRecord:
+    room = _get_room(code)
+    if room.decision_record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="decision record not found",
+        )
+    return room.decision_record
+
+
+@app.post(
+    "/api/rooms/{code}/decision-record",
+    response_model=DecisionRecord,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_decision_record(
+    payload: DecisionRecordCreate,
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DecisionRecord:
+    with rooms_lock:
+        decision_lock = room_analysis_locks.setdefault(code.upper(), Lock())
+
+    with decision_lock:
+        room = _get_room(code)
+        if room.decision_record is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="decision record already exists",
+            )
+        if len(room.submissions) < room.expected_members:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="all expected members must submit before recording a decision",
+            )
+        if payload.final_choice not in room.options:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="final_choice must be one of the room options",
+            )
+
+        result = analyze_room(room.submissions, room.options, room.criteria)
+        initial_majority = max(
+            room.options,
+            key=lambda option: sum(
+                submission.first_choice == option for submission in room.submissions
+            ),
+        )
+        record = DecisionRecord(
+            initial_majority_choice=initial_majority,
+            analysis_winner=result["current_winner"],
+            robust_choice=result["robust_choice"],
+            final_choice=payload.final_choice,
+            final_reason=payload.final_reason,
+            decided_at=datetime.now(timezone.utc),
+            changed_from_initial=payload.final_choice != initial_majority,
+        )
+        room.decision_record = record
+        room_store.save(room)
+        return record
 
 
 @app.get("/api/rooms/{code}/debate", response_model=DebateState)

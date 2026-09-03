@@ -8,6 +8,8 @@ import type {
   CriteriaSuggestPayload,
   CriteriaSuggestResponse,
   DebateState,
+  DecisionRecord,
+  DecisionRecordPayload,
   DefenderTurnPayload,
   Room,
   SubmissionPayload,
@@ -115,6 +117,19 @@ export const api = {
   defendDecision(code: string, payload: DefenderTurnPayload): Promise<DebateState> {
     if (USE_MOCK_API) return mockApi.defendDecision(code, payload);
     return request(`/api/rooms/${encodeURIComponent(code)}/debate/defend`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getDecisionRecord(code: string): Promise<DecisionRecord> {
+    if (USE_MOCK_API) return mockApi.getDecisionRecord(code);
+    return request(`/api/rooms/${encodeURIComponent(code)}/decision-record`);
+  },
+
+  createDecisionRecord(code: string, payload: DecisionRecordPayload): Promise<DecisionRecord> {
+    if (USE_MOCK_API) return mockApi.createDecisionRecord(code, payload);
+    return request(`/api/rooms/${encodeURIComponent(code)}/decision-record`, {
       method: "POST",
       body: JSON.stringify(payload),
     });

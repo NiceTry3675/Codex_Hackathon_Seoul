@@ -306,7 +306,8 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
                 {suggestions.criteria.map((item) => {
                   const added = criteriaList.includes(item.name);
                   return (
-                    <li key={item.name} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <li key={item.name} className="rounded-2xl border border-black/5 bg-white p-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <button
                         type="button"
                         onClick={() => addCriterion(item.name)}
@@ -320,6 +321,12 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
                         {added ? `✓ ${item.name}` : `+ ${item.name}`}
                       </button>
                       <span className="text-xs text-stone-500">{item.why}</span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-stone-600">{item.description}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-stone-500">
+                        <span className="rounded-full bg-red-50 px-2 py-1">1점 · {item.one_point}</span>
+                        <span className="rounded-full bg-moss-50 px-2 py-1">5점 · {item.five_point}</span>
+                      </div>
                     </li>
                   );
                 })}

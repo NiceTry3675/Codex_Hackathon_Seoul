@@ -284,6 +284,17 @@ class DecisionRecordCreate(ApiModel):
         return value.strip()
 
 
+class DecisionRecheckCreate(ApiModel):
+    weights: dict[str, Weight]
+    final_choice: str = Field(min_length=1, max_length=200)
+    consensus_note: str = Field(min_length=1, max_length=2_000)
+
+    @field_validator("final_choice", "consensus_note")
+    @classmethod
+    def strip_recheck_text(cls, value: str) -> str:
+        return value.strip()
+
+
 class DecisionRecord(ApiModel):
     initial_majority_choice: str
     analysis_winner: str
@@ -312,6 +323,7 @@ class Room(ApiModel):
     devils_advocate_source: Literal["live", "fallback"] | None = None
     debate: DebateState | None = None
     decision_record: DecisionRecord | None = None
+    decision_recheck: dict[str, Any] | None = None
 
 
 class RoomResponse(ApiModel):
@@ -383,3 +395,12 @@ class AnalysisResponse(ApiModel):
     flip_points: list[dict[str, Any]] = Field(default_factory=list)
     discussion_agenda: list[str] = Field(default_factory=list)
     devils_advocate: DevilsAdvocate | None = None
+
+
+class DecisionRecheck(ApiModel):
+    before: AnalysisResponse
+    after: AnalysisResponse
+    revised_weights: dict[str, int]
+    final_choice: str
+    consensus_note: str
+    checked_at: datetime

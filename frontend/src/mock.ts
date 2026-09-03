@@ -9,6 +9,8 @@ import type {
   DebateState,
   DecisionAssistantPayload,
   DecisionAssistantResponse,
+  DecisionRecheck,
+  DecisionRecheckPayload,
   DecisionRecord,
   DecisionRecordPayload,
   DefenderMessage,
@@ -19,6 +21,7 @@ import type {
   SubmissionPayload,
   SubmitResponse,
 } from "./types";
+import { calculateRanking } from "./calculations.ts";
 
 export const DEFAULT_ROOM_CODE = "X7K2P9";
 
@@ -155,6 +158,7 @@ function createMockDebate(): DebateState {
 
 let debate: DebateState = createMockDebate();
 let decisionRecord: DecisionRecord | undefined;
+let decisionRecheck: DecisionRecheck | undefined;
 
 /** 백엔드 project_open_agenda와 동일하게 open/reframed 질문만 안건으로 투영한다. */
 function projectOpenAgenda(state: DebateState): string[] {
@@ -209,6 +213,7 @@ export const mockApi = {
     await delay();
     debate = createMockDebate();
     decisionRecord = undefined;
+    decisionRecheck = undefined;
     room = {
       code: DEFAULT_ROOM_CODE,
       question: payload.question,
@@ -351,5 +356,33 @@ export const mockApi = {
       changed_from_initial: payload.final_choice !== optionA,
     };
     return structuredClone(decisionRecord);
+  },
+
+  async getDecisionRecheck(_code: string): Promise<DecisionRecheck> {
+    await delay(120);
+    if (!decisionRecheck) throw new Error("decision recheck not found");
+    return structuredClone(decisionRecheck);
+  },
+
+  async createDecisionRecheck(_code: string, payload: DecisionRecheckPayload): Promise<DecisionRecheck> {
+    await delay(260);
+    if (decisionRecheck) throw new Error("decision recheck already exists");
+    const after = structuredClone(MOCK_ANALYSIS);
+    after.team_weights = Object.fromEntries(Object.entries(payload.weights).map(([key, value]) => [key, value / 100]));
+    after.current_winner = calculateRanking(
+      room.options,
+      room.criteria,
+      after.mean_scores ?? {},
+      payload.weights,
+    )[0]?.option ?? after.current_winner;
+    decisionRecheck = {
+      before: structuredClone(MOCK_ANALYSIS),
+      after,
+      revised_weights: { ...payload.weights },
+      final_choice: payload.final_choice,
+      consensus_note: payload.consensus_note,
+      checked_at: new Date().toISOString(),
+    };
+    return structuredClone(decisionRecheck);
   },
 };

@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import DebatePanel from "../components/DebatePanel";
+import RecheckPanel from "../components/RecheckPanel";
 import { allocatePercentages, calculateRanking, rebalancePercentages } from "../calculations";
 import type { Agreement, AnalysisResponse, DecisionRecord, Room } from "../types";
 
@@ -29,34 +30,19 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function DecisionRecordPanel({ room, analysis }: { room: Room; analysis: AnalysisResponse }) {
+interface DecisionRecordPanelProps {
+  room: Room;
+  recheckRevision: number;
+}
+
+function DecisionRecordPanel({ room, recheckRevision }: DecisionRecordPanelProps) {
   const [record, setRecord] = useState<DecisionRecord>();
-  const [finalChoice, setFinalChoice] = useState(analysis.current_winner);
-  const [finalReason, setFinalReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     void api.getDecisionRecord(room.code).then((item) => active && setRecord(item)).catch(() => undefined);
     return () => { active = false; };
-  }, [room.code]);
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    try {
-      setRecord(await api.createDecisionRecord(room.code, {
-        final_choice: finalChoice,
-        final_reason: finalReason.trim(),
-      }));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "최종 결정을 기록하지 못했습니다.");
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [room.code, recheckRevision]);
 
   if (record) {
     return (
@@ -76,28 +62,7 @@ function DecisionRecordPanel({ room, analysis }: { room: Room; analysis: Analysi
     );
   }
 
-  return (
-    <form onSubmit={save} className="mt-6 space-y-4">
-      <fieldset>
-        <legend className="text-sm font-bold text-stone-600">논의 후 최종 선택</legend>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {room.options.map((option) => (
-            <label key={option} className={`cursor-pointer rounded-2xl border p-3 text-sm ${finalChoice === option ? "border-moss-500 bg-moss-50 font-semibold" : "border-black/10 bg-stone-50"}`}>
-              <input className="mr-2" type="radio" name="final-choice" value={option} checked={finalChoice === option} onChange={() => setFinalChoice(option)} />
-              {option}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <label className="block text-sm font-bold text-stone-600">
-        최종 선택 이유
-        <textarea className="mt-2 min-h-28 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-normal leading-6" value={finalReason} onChange={(event) => setFinalReason(event.target.value)} maxLength={2000} required placeholder="논의에서 확인한 근거와 감수하기로 한 위험을 남겨 주세요." />
-      </label>
-      {error && <p className="text-sm font-semibold text-red-700" role="alert">{error}</p>}
-      <button type="submit" className="primary-button" disabled={saving || !finalReason.trim()}>{saving ? "기록 중…" : "최종 결정 기록하기"}</button>
-      <p className="text-xs text-stone-500">기록은 최초 판단과 최종 판단의 차이를 보존하기 위해 저장 후 수정할 수 없습니다.</p>
-    </form>
-  );
+  return <p className="mt-6 rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-600">Re-check 결과를 확인한 뒤, 위의 <strong>이 결정 확정하고 기록하기</strong> 버튼으로 최종 결정을 남겨 주세요.</p>;
 }
 
 function sliderFill(value: number, min: number, max: number) {
@@ -116,6 +81,7 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
     [analysis.team_weights, room.criteria],
   );
   const [liveWeights, setLiveWeights] = useState<Record<string, number>>(initialWeights);
+  const [decisionRecordRevision, setDecisionRecordRevision] = useState(0);
 
   useEffect(() => setLiveWeights(initialWeights), [initialWeights]);
 
@@ -407,10 +373,17 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
         </section>
 
         <section className="card">
-          <p className="eyebrow">08 · Decision record</p>
-          <h2 className="section-title">팀이 내린 최종 결정을 남기세요.</h2>
-          <p className="mt-3 text-sm leading-6 text-stone-500">최초 선택, 분석 신호, 최종 선택을 함께 보존합니다. 분석은 결정을 대신하지 않습니다.</p>
-          <DecisionRecordPanel room={room} analysis={analysis} />
+          <p className="eyebrow">08 · Re-check decision</p>
+          <h2 className="section-title">논의 결과를 반영해 다시 확인하세요.</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">팀이 합의한 기준 가중치와 최종 선택을 반영해 안정성과 뒤집힘 조건을 다시 계산합니다.</p>
+          <RecheckPanel room={room} analysis={analysis} onDecisionRecorded={() => setDecisionRecordRevision((revision) => revision + 1)} />
+        </section>
+
+        <section className="card">
+          <p className="eyebrow">09 · Decision record</p>
+          <h2 className="section-title">검증한 결정을 남기세요.</h2>
+          <p className="mt-3 text-sm leading-6 text-stone-500">재검증을 마친 뒤 팀이 선택한 결론과 근거를 함께 보존합니다.</p>
+          <DecisionRecordPanel room={room} recheckRevision={decisionRecordRevision} />
         </section>
 
       </div>

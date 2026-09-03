@@ -62,6 +62,8 @@ from .models import (
     DebateState,
     DecisionAssistantRequest,
     DecisionAssistantResponse,
+    DecisionRecheck,
+    DecisionRecheckCreate,
     DecisionRecord,
     DecisionRecordCreate,
     DefenderTurnRequest,
@@ -647,6 +649,77 @@ def create_decision_record(
         room.decision_record = record
         room_store.save(room)
         return record
+
+
+@app.get("/api/rooms/{code}/decision-record/recheck", response_model=DecisionRecheck)
+def get_decision_recheck(
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DecisionRecheck:
+    room = _get_room(code)
+    if room.decision_recheck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="decision recheck not found",
+        )
+    return DecisionRecheck.model_validate(room.decision_recheck)
+
+
+@app.post(
+    "/api/rooms/{code}/decision-record/recheck",
+    response_model=DecisionRecheck,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_decision_recheck(
+    payload: DecisionRecheckCreate,
+    code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
+) -> DecisionRecheck:
+    with rooms_lock:
+        decision_lock = room_analysis_locks.setdefault(code.upper(), Lock())
+
+    with decision_lock:
+        room = _get_room(code)
+        if room.decision_recheck is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="decision recheck already exists",
+            )
+        _require_exact_keys(set(payload.weights), room.criteria, "weights")
+        if sum(payload.weights.values()) != 100:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="weights must total 100",
+            )
+        if payload.final_choice not in room.options:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="final_choice must be one of the room options",
+            )
+
+        try:
+            before = analyze_room(room.submissions, room.options, room.criteria)
+            after = analyze_room(
+                room.submissions,
+                room.options,
+                room.criteria,
+                weight_override=payload.weights,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+        recheck = DecisionRecheck(
+            before=AnalysisResponse.model_validate(before),
+            after=AnalysisResponse.model_validate(after),
+            revised_weights=payload.weights,
+            final_choice=payload.final_choice,
+            consensus_note=payload.consensus_note,
+            checked_at=datetime.now(timezone.utc),
+        )
+        room.decision_recheck = recheck.model_dump(mode="json")
+        room_store.save(room)
+        return recheck
 
 
 @app.get("/api/rooms/{code}/debate", response_model=DebateState)

@@ -119,6 +119,34 @@ def test_decision_record_rejects_unknown_choice_without_llm(client: TestClient, 
     assert response.json()["detail"] == "final_choice must be one of the room options"
 
 
+def test_decision_recheck_precedes_final_record_and_compares_results(client: TestClient):
+    room = client.post("/api/rooms", json=room_payload()).json()
+    code = room["code"]
+    client.post(f"/api/rooms/{code}/submit", json=submission_payload()).raise_for_status()
+    response = client.post(
+        f"/api/rooms/{code}/decision-record/recheck",
+        json={
+            "weights": {"가치": 40, "실행": 60},
+            "final_choice": "B",
+            "consensus_note": "실행 가능성을 우선하기로 합의",
+        },
+    )
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["before"]["current_winner"] == "A"
+    assert result["after"]["current_winner"] == "B"
+    assert result["revised_weights"] == {"가치": 40, "실행": 60}
+    assert client.get(f"/api/rooms/{code}/decision-record").status_code == 404
+    assert client.get(f"/api/rooms/{code}/decision-record/recheck").json() == result
+    final_record = client.post(
+        f"/api/rooms/{code}/decision-record",
+        json={"final_choice": "B", "final_reason": "실행 가능성을 우선하기로 합의"},
+    )
+    assert final_record.status_code == 201
+    assert final_record.json()["final_choice"] == "B"
+
+
 def test_analysis_requires_a_submission(client: TestClient):
     room = client.post("/api/rooms", json=room_payload()).json()
 

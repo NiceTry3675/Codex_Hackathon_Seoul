@@ -10,6 +10,8 @@ import type {
   DebateState,
   DecisionAssistantPayload,
   DecisionAssistantResponse,
+  DecisionRecheck,
+  DecisionRecheckPayload,
   DecisionRecord,
   DecisionRecordPayload,
   DefenderTurnPayload,
@@ -144,6 +146,19 @@ export const api = {
   createDecisionRecord(code: string, payload: DecisionRecordPayload): Promise<DecisionRecord> {
     if (USE_MOCK_API) return mockApi.createDecisionRecord(code, payload);
     return request(`/api/rooms/${encodeURIComponent(code)}/decision-record`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getDecisionRecheck(code: string): Promise<DecisionRecheck> {
+    if (USE_MOCK_API) return mockApi.getDecisionRecheck(code);
+    return request(`/api/rooms/${encodeURIComponent(code)}/decision-record/recheck`);
+  },
+
+  createDecisionRecheck(code: string, payload: DecisionRecheckPayload): Promise<DecisionRecheck> {
+    if (USE_MOCK_API) return mockApi.createDecisionRecheck(code, payload);
+    return request(`/api/rooms/${encodeURIComponent(code)}/decision-record/recheck`, {
       method: "POST",
       body: JSON.stringify(payload),
     });

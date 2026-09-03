@@ -281,6 +281,7 @@ def analyze_room(
     options: Sequence[str],
     criteria: Sequence[str],
     seed: int = 42,
+    weight_override: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Analyze one room and return the API-ready descriptive statistics.
 
@@ -305,11 +306,27 @@ def analyze_room(
     weights, scores, first_choices, parsed = _read_submissions(
         members, option_names, criterion_names
     )
-    team_percentages = allocate_percentages(
-        _normalise(np.mean(weights, axis=0)),
-        minimum=0,
-    )
-    team_weight_values = team_percentages / WEIGHT_TOTAL_PERCENT
+    if weight_override is None:
+        team_percentages = allocate_percentages(
+            _normalise(np.mean(weights, axis=0)),
+            minimum=0,
+        )
+        team_weight_values = team_percentages / WEIGHT_TOTAL_PERCENT
+    else:
+        if set(weight_override) != set(criterion_names):
+            raise ValueError("weight override must cover every criterion exactly")
+        override_values = np.asarray(
+            [float(weight_override[criterion]) for criterion in criterion_names],
+            dtype=float,
+        )
+        if (
+            not np.all(np.isfinite(override_values))
+            or np.any(override_values < WEIGHT_MIN_PERCENT)
+            or not np.isclose(np.sum(override_values), WEIGHT_TOTAL_PERCENT)
+        ):
+            raise ValueError("weight override must be positive and total 100")
+        team_percentages = override_values.astype(int)
+        team_weight_values = override_values / WEIGHT_TOTAL_PERCENT
     mean_scores = np.mean(scores, axis=0)
     current_score_values = mean_scores @ team_weight_values
     current_winner_index = _winner(current_score_values)

@@ -170,6 +170,21 @@ export interface DecisionRecord {
   changed_from_initial: boolean;
 }
 
+export interface DecisionRecheckPayload {
+  weights: Record<string, number>;
+  final_choice: string;
+  consensus_note: string;
+}
+
+export interface DecisionRecheck {
+  before: AnalysisResponse;
+  after: AnalysisResponse;
+  revised_weights: Record<string, number>;
+  final_choice: string;
+  consensus_note: string;
+  checked_at: string;
+}
+
 /** Devil's Advocate 공방 — 백엔드 DebateState 계약(backend/models.py)과 1:1 대응. */
 export type DefenseStatus = "mitigated" | "open" | "invalid";
 export type ChallengeResolution = "resolved" | "open" | "reframed";

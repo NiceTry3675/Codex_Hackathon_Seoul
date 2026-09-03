@@ -166,3 +166,24 @@ def test_member_removal_and_hidden_conflict_are_descriptive():
 def test_empty_room_is_rejected_explicitly():
     with pytest.raises(ValueError, match="at least one submission"):
         analyze_room([], ["A", "B"], ["quality"])
+
+
+def test_weight_override_recalculates_winner_and_flip_points():
+    submissions = [
+        _submission(
+            {"A": {"quality": 5, "cost": 1}, "B": {"quality": 1, "cost": 5}},
+            {"quality": 6, "cost": 4},
+            "A",
+        )
+    ]
+
+    result = analyze_room(
+        submissions,
+        ["A", "B"],
+        ["quality", "cost"],
+        weight_override={"quality": 40, "cost": 60},
+    )
+
+    assert result["team_weights"] == pytest.approx({"quality": 0.4, "cost": 0.6})
+    assert result["current_winner"] == "B"
+    assert result["flip_points"]

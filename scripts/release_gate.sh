@@ -27,13 +27,16 @@ trap cleanup EXIT
 
 cd "$PROJECT_ROOT"
 
-echo "[1/7] Backend tests"
+echo "[1/8] Backend tests"
 "$PYTHON_BIN" -m pytest -q
 
-echo "[2/7] Frontend production build"
+echo "[2/8] Frontend calculation tests"
+(cd frontend && npm test)
+
+echo "[3/8] Frontend production build"
 (cd frontend && VITE_USE_MOCK_API=false VITE_API_BASE_URL= npm run build)
 
-echo "[3/7] Optional live OpenAI smoke"
+echo "[4/8] Optional live OpenAI smoke"
 OPENAI_SMOKE_CONFIGURED=false
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
   OPENAI_SMOKE_CONFIGURED=true
@@ -53,7 +56,7 @@ else
   echo "skip: OPENAI_API_KEY is not exported or present in .env"
 fi
 
-echo "[4/7] Docker availability and image build"
+echo "[5/8] Docker availability and image build"
 if [[ "$SKIP_DOCKER" == true ]]; then
   "$PYTHON_BIN" scripts/local_e2e.py
   echo "release gate passed without Docker; run again without --skip-docker before deployment"
@@ -66,7 +69,7 @@ fi
 docker info >/dev/null
 docker build -t "$IMAGE_TAG" .
 
-echo "[5/7] Container health"
+echo "[6/8] Container health"
 docker run --rm -d --name "$CONTAINER_NAME" -p 127.0.0.1::8080 "$IMAGE_TAG" >/dev/null
 MAPPING="$(docker port "$CONTAINER_NAME" 8080/tcp | head -n 1)"
 PORT="${MAPPING##*:}"
@@ -79,7 +82,7 @@ for _attempt in {1..30}; do
 done
 curl --fail --silent "$BASE_URL/api/health" >/dev/null
 
-echo "[6/7] LIVE API frontend bundle"
+echo "[7/8] LIVE API frontend bundle"
 INDEX_HTML="$(curl --fail --silent "$BASE_URL/")"
 ASSET_PATH="$(printf '%s' "$INDEX_HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p' | head -n 1)"
 if [[ -z "$ASSET_PATH" ]]; then
@@ -92,7 +95,7 @@ if [[ "$BUNDLE" != *"LIVE API"* || "$BUNDLE" == *"MOCK MODE"* ]]; then
   exit 1
 fi
 
-echo "[7/7] Live HTTP demo contract"
+echo "[8/8] Live HTTP demo contract"
 "$PYTHON_BIN" scripts/load_demo.py --base-url "$BASE_URL" >"$DEMO_RESULT"
 "$PYTHON_BIN" scripts/check_demo_result.py "$DEMO_RESULT"
 

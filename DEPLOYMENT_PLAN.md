@@ -25,6 +25,8 @@
 5. Google 로그인 사용 시 `GOOGLE_CLIENT_ID`, 32자 이상의 `SESSION_SECRET`,
    `SESSION_COOKIE_SECURE=true`를 런타임 환경변수로 설정한다. Google OAuth 승인된
    JavaScript 원본에는 최종 HTTPS 서비스 원본을 등록한다.
+6. 익명 참여 쿠키 서명용 `ANONYMOUS_TOKEN_SECRET`을 32자 이상의 별도 무작위 값으로 설정하고 모든 인스턴스에서 동일하게 유지한다.
+7. DynamoDB 테이블의 TTL 속성 이름을 숫자형 epoch 필드 `expires_at`으로 활성화한다. TTL 삭제는 지연될 수 있지만 애플리케이션도 만료 시각을 검사해 즉시 접근을 차단한다.
 
 ## 2. 권장 결정안
 
@@ -91,6 +93,7 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
    - `CONSENSUS_TABLE_NAME`: `consensus-rooms`
    - `GOOGLE_CLIENT_ID`: Google OAuth 웹 Client ID
    - `SESSION_SECRET`: 운영용 무작위 값(최소 32자)
+   - `ANONYMOUS_TOKEN_SECRET`: 익명 참여 쿠키용 별도 무작위 값(최소 32자, 전 인스턴스 동일)
    - `SESSION_COOKIE_SECURE`: `true`
    - 키를 tracked 파일, 이미지 layer, shell history, 로그에 기록하지 않는다.
 5. autoscaling config를 `MinSize=1`, `MaxSize=1`로 생성한다.
@@ -103,6 +106,8 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
    - OpenAI 키와 모델을 plain-text runtime environment variables로 설정
 
 **통과 조건:** service가 `RUNNING`, HTTPS health가 200, 루트 화면이 `LIVE API`.
+
+DynamoDB 테이블에는 파티션 키 `code` 외에 애플리케이션이 `version`과 `expires_at`을 기록한다. 콘솔의 **Additional settings → Time to Live (TTL)** 에서 속성 이름을 `expires_at`으로 지정한다. 제출은 `version` 조건부 `PutItem`으로 처리되므로 App Runner 인스턴스가 늘어나도 같은 참여 토큰의 동시 요청은 하나만 성공한다.
 
 **2:00 중단 규칙:** IAM/ECR/App Runner 문제를 20분 안에 해소하지 못하면 더 파고들지 말고 Phase 6의 EC2 폴백으로 전환한다.
 

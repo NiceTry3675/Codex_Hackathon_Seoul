@@ -56,13 +56,18 @@ Room:
   criteria: list[str]      # ["창의성", "구현 가능성", "발표 임팩트"]
   context: str             # 배경 맥락 (선택, 최대 50,000자; 한 줄 메모부터 회의록 전문까지)
   expected_members: int    # 기본 4, 대기 화면 완료 판단용
+  created_at: datetime
+  expires_at: datetime     # 기본 24시간, 생성 시 1~168시간 설정
+  version: int             # DynamoDB 조건부 제출 쓰기용
+  used_anonymous_token_hashes: list[str]  # 원문 토큰은 저장하지 않음
   submissions: list[Submission]
+  decision_record: DecisionRecord | None
 
 Submission:
   id: str                  # uuid
   participant_name: str?   # 실명 방에서만 저장
   scores: dict[option, dict[criterion, int]]   # 1~5
-  weights: dict[criterion, int]                # 1~10 슬라이더
+  weights: dict[criterion, int]                # 1~100; 신규 UI는 합계가 정확히 100%
   first_choice: str
   reason: str              # 자유 텍스트 (선택)
   parsed: ParsedOpinion | None                 # GPT 구조화 결과
@@ -71,6 +76,15 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
   preferred_option: str
   positive: list[str]      # 언급된 긍정 기준
   concerns: list[str]      # 언급된 우려 기준
+
+DecisionRecord:
+  initial_majority_choice: str
+  analysis_winner: str
+  robust_choice: str
+  final_choice: str
+  final_reason: str
+  decided_at: datetime
+  changed_from_initial: bool
 ```
 
 ---
@@ -83,13 +97,15 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 | POST | `/api/auth/google` | `credential` ID 토큰 검증 후 HttpOnly 세션 생성 |
 | GET | `/api/auth/me` | 로그인 상태와 검증된 사용자 프로필 |
 | POST | `/api/auth/logout` | 세션 쿠키 제거 |
-| POST | `/api/criteria/suggestions` | question·options·context 기반 평가 기준 제안 (LLM, 실패 시 범용 폴백) — 팀이 최종 선택 |
-| POST | `/api/rooms` | 방 생성 (question, options, criteria, context) → room code |
-| GET | `/api/rooms/{code}` | 방 정보 + 제출 수 |
+| POST | `/api/criteria/suggestions` | question·options·context 기반 평가 기준·설명·1점/5점 anchor 제안 (LLM, 실패 시 범용 폴백) |
+| POST | `/api/rooms` | 방 생성 (question, options, criteria, context, expires_in_hours) → room code |
+| GET | `/api/rooms/{code}` | 방 정보 + 제출 수; 익명 방은 HttpOnly 참여 쿠키 발급 |
 | POST | `/api/rooms/{code}/submit` | 의견 제출 (내부에서 GPT 구조화 호출) |
 | GET | `/api/rooms/{code}/analysis` | 전체 분석 결과 (아래 §5 출력 전부) |
 | GET | `/api/rooms/{code}/debate` | 동결 증거·질문·답변·판정 transcript 조회 |
 | POST | `/api/rooms/{code}/debate/defend` | 질문별 Defender 답변 제출 및 최종 판정 |
+| GET | `/api/rooms/{code}/decision-record` | 저장된 최종 결정 기록 조회 |
+| POST | `/api/rooms/{code}/decision-record` | 분석 완료 후 불변 최종 결정 기록 생성 |
 
 `/analysis` 응답 스키마:
 
@@ -107,7 +123,7 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
   "robust_choice":     "B",
   "flip_points": [
     {"type": "weight", "criterion": "구현 가능성", "from": 0.30, "to": 0.34,
-     "new_winner": "B"},
+     "change": 0.04, "direction": "increase", "proximity": "nearby", "new_winner": "B"},
     {"type": "member", "description": "1명이 A→B로 바꾸면 결과가 뒤집힘"}
   ],
   "discussion_agenda": ["A의 구현 가능성이 유일한 실질 쟁점 — 10분 논의 권장"],
@@ -125,7 +141,7 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 
 ## 5. 통계 엔진 (`stats.py`, numpy만 사용)
 
-1. **팀 가중치**: 개인 weight 슬라이더 평균 → 정규화. 개인 간 분산 = 기준 합의도.
+1. **팀 가중치**: 개인 weight 슬라이더 평균 → largest-remainder 방식의 정수 퍼센트 보정. 합계는 항상 100%. 개인 간 분산 = 기준 합의도.
 2. **Agreement Score**: 기준별 점수의 표준편차. σ ≤ 0.8 HIGH / ≤ 1.5 MID / 그 외 LOW.
 3. **현재 점수**: `score(option) = Σ_c team_weight[c] × mean(scores[option][c])`
 4. **Stability (Sensitivity Analysis)** ⭐
@@ -134,7 +150,9 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
    - `stability(option) = 해당 옵션이 1위인 시뮬레이션 비율`
    - `robust_choice = argmax(stability)`
 5. **Flip Point (weight)** ⭐
-   - 각 기준의 가중치를 1%p씩 증가(나머지 비례 감소)시키며 1위가 바뀌는 최소 지점 탐색.
+   - 각 기준의 가중치를 1%p씩 증가·감소시키고 나머지를 비례 재분배하며 1위가 바뀌는 최소 지점을 탐색한다.
+   - 현재 값에서 ±15%p 이내는 `nearby`, 그보다 먼 조건은 `theoretical`로 분류한다.
+   - 이론적 조건만 있으면 기본 결과에는 "현재 결과는 가중치 변화에 비교적 견고합니다"를 표시한다.
 6. **Flip Point (member)**
    - MVP에서는 제출을 하나씩 제거해 재계산한다. 1순위만 바꾸는 반사실 계산은 점수 변경 규칙을 정한 뒤 확장한다.
 7. **Hidden Conflict**
@@ -174,9 +192,9 @@ FastAPI 로직을 그대로 노출: `submit_preference()`, `analyze_consensus()`
 
 ## 8. 프론트엔드 (React + Tailwind, 3화면)
 
-1. **입력**: 방 만들기/코드 참여 → 옵션별 기준 점수(1~5) + 기준 중요도 슬라이더(1~10) + 이유 텍스트. 방 생성자가 익명/실명 모드를 선택한다.
+1. **입력**: 항목형 방 만들기/코드 참여 → 옵션별 기준 점수(1=부정적, 5=긍정적) + 합계 100% 연동 중요도 슬라이더 + 이유 텍스트. 방 생성자가 익명/실명 모드를 선택한다.
 2. **대기/현황**: 제출 인원 수만 표시 (개별 답변 비공개). 전원 제출 시 분석 버튼 활성화.
-3. **결과** ⭐: 득표 → Stability 게이지 → Hidden Conflict → Flip Point → Robust Choice → Discussion Agenda + Devil's Advocate 반론 순서로 스크롤 스토리텔링. 가중치 슬라이더 라이브 조작 → 순위 뒤집힘 시연 가능하게.
+3. **결과** ⭐: 핵심 1위·Stability·Hidden Conflict·가까운 Flip Point를 먼저 표시하고 상세 계산·이론적 Flip Point는 접는다. 연동 슬라이더, Devil's Advocate 공방, Discussion Agenda, Decision Record를 제공한다.
 
 Team Map(2D 산점도)은 시간 남을 때만. 첫 번째 컷 대상.
 
@@ -205,7 +223,9 @@ t3.small + docker run, 보안그룹 80/443 오픈, 필요 시 Caddy로 HTTPS.
 
 ### 주의
 
-- DynamoDB로 room을 영속화한다. 데모 비용과 동작 예측성을 위해 App Runner min/max instance는 1로 유지한다.
+- DynamoDB로 room을 영속화한다. `expires_at` Number 속성에 TTL을 활성화하고, `version` 조건부 쓰기로 동시 제출을 직렬화한다.
+- `ANONYMOUS_TOKEN_SECRET`은 모든 App Runner 인스턴스에 동일한 32자 이상 비밀값으로 설정한다. 토큰 원문, IP, Google 계정은 익명 Submission에 저장하지 않는다.
+- 익명 중복 방지는 같은 브라우저의 쿠키를 기준으로 하므로 시크릿 창, 쿠키 삭제, 다른 기기를 통한 우회 가능성을 UI와 문서에 알린다.
 - 배포는 코딩 완료 기다리지 말고 **2시간 차에 hello-world 컨테이너로 먼저** 파이프라인 검증.
 
 ---

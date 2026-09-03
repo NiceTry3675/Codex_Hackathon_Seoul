@@ -35,10 +35,10 @@ AWS App Runner(도쿄 리전) 단일 컨테이너로 배포되어 있으며, `ma
 
 1. **Hidden Conflict** — 찬성표 뒤에 숨은 우려. "전원이 A에 찬성했지만, 전원이 구현 가능성을 걱정한다."
 2. **Decision Stability** — 평가 기준 가중치를 Dirichlet 섭동으로 1,000번 흔들었을 때 현재 1위가 살아남는 비율. 표면적 합의 100%가 실질 안정성 47%일 수 있다.
-3. **Flip Point** — 결정이 뒤집히는 최소 조건. "구현 가능성을 1%만 더 중요하게 보면 승자가 바뀝니다."
+3. **Flip Point** — 기준 비중을 올리거나 내렸을 때 결정이 뒤집히는 최소 조건. ±15%p 이내는 가까운 조건으로, 그 밖은 상세 화면의 이론적 조건으로 구분합니다.
 4. **Most Robust Choice** — 가장 많은 표를 받은 답이 아니라, 평가 조건이 흔들려도 1위를 유지할 확률이 가장 높은 답.
 
-여기에 **Devil's Advocate 공방**이 붙습니다. 분석 결과를 동결한 증거로 삼아 Challenger가 검증 가능한 질문을 던지고, 팀(Defender)이 답변하면 최대 2라운드 안에 각 쟁점을 `resolved` / `open` / `reframed`로 판정해 남은 쟁점만 논의 안건으로 되돌려줍니다.
+여기에 **Devil's Advocate 공방**과 **Decision Record**가 붙습니다. 분석 결과를 동결한 증거로 삼아 Challenger가 검증 가능한 질문을 던지고, 팀(Defender)이 답변하면 최대 2라운드 안에 각 쟁점을 `resolved` / `open` / `reframed`로 판정합니다. 논의 뒤에는 최초 다수 선택, 분석 당시 1위, Most Robust Choice, 최종 선택과 이유를 함께 보존합니다.
 
 **싱큐는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줄 뿐입니다.** 판단과 책임은 팀에 남기고, 판단의 조건만 드러냅니다.
 
@@ -59,8 +59,9 @@ Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통�
 
 - **계산과 이해의 분리**: 모든 수치는 사용자 입력 + 결정적 통계에서만 나옵니다. LLM은 자연어 구조화와 반론 생성만 담당하고, LLM이 실패해도 분석은 폴백으로 동작합니다.
 - **백엔드**: FastAPI + numpy. 로컬은 인메모리, 프로덕션은 DynamoDB로 방·제출 영속화. WebSocket 없이 polling.
-- **프런트엔드**: React (Vite) SPA — 방 만들기 / 의견 입력 / 제출 현황 / 분석 결과 4화면. 방 생성 폼은 바로 시연 가능한 데모 예시값으로 시작하며, 결과 화면의 가중치 슬라이더로 Flip Point를 라이브 시연.
+- **프런트엔드**: React (Vite) SPA — 항목형 방 만들기 / 의견 입력 / 제출 현황 / 분석 결과 4화면. 가중치 슬라이더는 나머지 기준을 비례 조정해 합계를 정확히 100%로 유지합니다.
 - **인증**: Google 로그인(ID 토큰을 `google-auth`로 서버 검증, HttpOnly 서명 쿠키 세션). 실명 제출 방 생성은 로그인 사용자만 가능하며, 익명 제출 방은 로그인 없이 만들고 참여할 수 있습니다.
+- **익명 중복 방지**: 방별 HttpOnly 참여 쿠키를 발급하고 서버에는 해시만 저장합니다. 같은 브라우저의 반복 제출은 차단하지만 시크릿 창·쿠키 삭제·다른 기기를 이용한 우회까지 식별하지는 않습니다. IP나 Google 계정은 익명 Submission에 저장하지 않습니다.
 - **배포**: 단일 Docker 이미지(React 빌드 + FastAPI 런타임) → ECR → App Runner, GitHub Actions 자동 배포 + 불변 롤백 태그.
 
 ## API 요약
@@ -68,12 +69,13 @@ Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통�
 | Method | Path | 설명 |
 |---|---|---|
 | `POST` | `/api/criteria/suggestions` | 질문·선택지·배경 맥락으로 평가 기준 제안 (팀이 최종 선택) |
-| `POST` | `/api/rooms` | 방 생성 (배경 맥락 선택 입력) |
-| `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
+| `POST` | `/api/rooms` | 방 생성 (배경 맥락·1~168시간 만료 설정) |
+| `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황, 익명 참여 쿠키 발급 |
 | `POST` | `/api/rooms/{code}/submit` | 익명/실명 의견 제출 |
 | `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 (+ Challenger 질문 생성) |
 | `GET` | `/api/rooms/{code}/debate` | 동결 증거와 공방 transcript 조회 |
 | `POST` | `/api/rooms/{code}/debate/defend` | Defender 답변 제출 후 최종 판정 |
+| `GET/POST` | `/api/rooms/{code}/decision-record` | 불변 최종 결정 기록 조회·생성 |
 | `GET/POST` | `/api/auth/*` | Google 로그인 설정·세션 |
 
 ## 개발 방식
@@ -105,6 +107,8 @@ npm run dev   # http://localhost:5173
 ```
 
 `OPENAI_API_KEY` 없이도 통계 분석과 결정적 폴백 경로가 전부 동작합니다. Google 로그인·Docker·배포 상세는 [`DEPLOYMENT_PLAN.md`](DEPLOYMENT_PLAN.md)를 참고하세요.
+
+로컬에서는 방이 메모리에 저장되며 접근 시 만료 데이터를 정리합니다. 운영 환경은 `CONSENSUS_TABLE_NAME`을 설정하고 DynamoDB TTL 속성을 `expires_at`으로 활성화해야 합니다. 다중 인스턴스에서 익명 쿠키를 검증하려면 모든 인스턴스에 동일한 `ANONYMOUS_TOKEN_SECRET`을 설정하세요.
 
 ## 문서
 

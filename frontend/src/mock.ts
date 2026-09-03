@@ -66,8 +66,8 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     "A. AI 보안 도구은(는) 1순위 다수 선택이지만 구현 가능성 평가는 크게 갈립니다.",
   ],
   stability: {
-    [optionA]: 0.474,
-    [optionB]: 0.526,
+    [optionA]: 0.477,
+    [optionB]: 0.523,
     [optionC]: 0,
   },
   current_winner: optionA,
@@ -76,8 +76,11 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     {
       type: "weight",
       criterion: "구현 가능성",
-      from: 0.7111,
-      to: 0.7211,
+      from: 0.71,
+      to: 0.72,
+      change: 0.01,
+      direction: "increase",
+      proximity: "nearby",
       new_winner: optionB,
     },
     {
@@ -86,7 +89,7 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     },
   ],
   discussion_agenda: [
-    "구현 가능성 중요도가 1%p 오르면 B. 팀 의사결정 도구(으)로 바뀝니다. 이 기준을 먼저 논의하세요.",
+    "구현 가능성 비중이 1%p 오르면 B. 팀 의사결정 도구(으)로 바뀝니다. 이 기준을 먼저 논의하세요.",
     "A. AI 보안 도구의 구현 가능성 평가가 갈리는 근거를 확인하세요.",
     "1명의 의견을 제외하면 결과가 B. 팀 의사결정 도구(으)로 바뀜.",
   ],

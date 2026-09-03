@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { USE_MOCK_API } from "../api";
+import { equalPercentages, rebalancePercentages } from "../calculations";
 import { DEFAULT_ROOM_CODE } from "../mock";
 import type { Room, SubmissionPayload } from "../types";
 
@@ -34,7 +35,7 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
     if (!room) return;
     setCode(room.code);
     setScores(createInitialScores(room));
-    setWeights(Object.fromEntries(room.criteria.map((criterion) => [criterion, 5])));
+    setWeights(equalPercentages(room.criteria));
     setFirstChoice("");
     setReason("");
     setParticipantName("");
@@ -244,26 +245,33 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
           <section className="card">
             <p className="eyebrow">What matters</p>
             <h2 className="section-title">기준의 중요도는 얼마인가요?</h2>
-            <p className="mt-3 text-sm text-stone-500">개인별 중요도는 팀 평균으로 정규화됩니다.</p>
+            <p className="mt-3 text-sm text-stone-500">한 기준을 바꾸면 나머지가 비례 조정되며, 합계는 항상 100%입니다.</p>
             <div className="mt-7 space-y-6">
               {room.criteria.map((criterion) => (
                 <label key={criterion} className="block">
                   <span className="flex items-center justify-between text-sm font-semibold">
                     {criterion}
-                    <output className="rounded-lg bg-moss-50 px-2.5 py-1 text-moss-700">{weights[criterion] ?? 5}/10</output>
+                    <output className="rounded-lg bg-moss-50 px-2.5 py-1 text-moss-700">{weights[criterion] ?? 0}%</output>
                   </span>
                   <input
                     type="range"
                     min="1"
-                    max="10"
-                    value={weights[criterion] ?? 5}
-                    onChange={(event) => setWeights((current) => ({ ...current, [criterion]: Number(event.target.value) }))}
+                    max={100 - Math.max(0, room.criteria.length - 1)}
+                    value={weights[criterion] ?? 1}
+                    onChange={(event) =>
+                      setWeights((current) =>
+                        rebalancePercentages(current, room.criteria, criterion, Number(event.target.value)),
+                      )
+                    }
                     className="slider mt-3"
-                    style={sliderFill(weights[criterion] ?? 5, 1, 10)}
+                    style={sliderFill(weights[criterion] ?? 1, 1, 100 - Math.max(0, room.criteria.length - 1))}
                   />
                 </label>
               ))}
             </div>
+            <p className="mt-5 text-right text-sm font-bold text-moss-700" aria-live="polite">
+              합계 {Object.values(weights).reduce((sum, value) => sum + value, 0)}%
+            </p>
           </section>
 
           <section className="card">

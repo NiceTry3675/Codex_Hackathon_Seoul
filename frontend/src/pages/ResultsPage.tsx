@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import DebatePanel from "../components/DebatePanel";
+import { allocatePercentages, calculateRanking, rebalancePercentages } from "../calculations";
 import type { Agreement, AnalysisResponse, Room } from "../types";
 
 interface ResultsPageProps {
@@ -71,39 +72,32 @@ function sliderFill(value: number, min: number, max: number) {
 
 function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
   const initialWeights = useMemo(
-    () => Object.fromEntries(room.criteria.map((criterion) => [criterion, Math.round((analysis.team_weights[criterion] ?? 0) * 100)])),
+    () => allocatePercentages(
+      Object.fromEntries(room.criteria.map((criterion) => [criterion, (analysis.team_weights[criterion] ?? 0) * 100])),
+      room.criteria,
+      100,
+      0,
+    ),
     [analysis.team_weights, room.criteria],
   );
   const [liveWeights, setLiveWeights] = useState<Record<string, number>>(initialWeights);
 
-  const normalizedWeights = useMemo(() => {
-    const total = Object.values(liveWeights).reduce((sum, value) => sum + value, 0) || 1;
-    return Object.fromEntries(room.criteria.map((criterion) => [criterion, (liveWeights[criterion] ?? 0) / total]));
-  }, [liveWeights, room.criteria]);
+  useEffect(() => setLiveWeights(initialWeights), [initialWeights]);
 
   const liveRanking = useMemo(() => {
     if (!analysis.mean_scores) return [];
-    return room.options
-      .map((option) => ({
-        option,
-        score: room.criteria.reduce(
-          (sum, criterion) =>
-            sum + (analysis.mean_scores?.[option]?.[criterion] ?? 0) * (normalizedWeights[criterion] ?? 0),
-          0,
-        ),
-      }))
-      .sort((left, right) => right.score - left.score);
-  }, [analysis.mean_scores, normalizedWeights, room.criteria, room.options]);
+    return calculateRanking(room.options, room.criteria, analysis.mean_scores, liveWeights);
+  }, [analysis.mean_scores, liveWeights, room.criteria, room.options]);
 
   const liveWinner = liveRanking[0]?.option;
   const winnerChanged = Boolean(liveWinner && liveWinner !== analysis.current_winner);
   const voteEntries = Object.entries(analysis.vote_share).sort(([, left], [, right]) => right - left);
   const stabilityEntries = Object.entries(analysis.stability).sort(([, left], [, right]) => right - left);
   const nearbyFlipPoints = analysis.flip_points.filter(
-    (item) => item.type === "member" || Math.abs(item.to - item.from) <= NEARBY_FLIP_THRESHOLD,
+    (item) => item.type === "member" || item.proximity === "nearby" || Math.abs(item.to - item.from) <= NEARBY_FLIP_THRESHOLD,
   );
   const theoreticalFlipPoints = analysis.flip_points.filter(
-    (item) => item.type === "weight" && Math.abs(item.to - item.from) > NEARBY_FLIP_THRESHOLD,
+    (item) => item.type === "weight" && (item.proximity === "theoretical" || Math.abs(item.to - item.from) > NEARBY_FLIP_THRESHOLD),
   );
 
   return (
@@ -275,20 +269,24 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
                   <label key={criterion} className="block">
                     <span className="flex items-center justify-between text-sm font-semibold">
                       <span>{criterion} <span className={`ml-1 rounded-full px-2 py-1 text-[10px] ${agreementStyle[analysis.weight_agreement[criterion] ?? "MID"]}`}>{agreementLabel[analysis.weight_agreement[criterion] ?? "MID"]}</span></span>
-                      <output>{Math.round((normalizedWeights[criterion] ?? 0) * 100)}%</output>
+                      <output>{liveWeights[criterion] ?? 0}%</output>
                     </span>
                     <input
                       type="range"
                       min="1"
-                      max="100"
+                      max={100 - Math.max(0, room.criteria.length - 1)}
                       value={liveWeights[criterion] ?? 1}
-                      onChange={(event) => setLiveWeights((current) => ({ ...current, [criterion]: Number(event.target.value) }))}
+                      onChange={(event) =>
+                        setLiveWeights((current) =>
+                          rebalancePercentages(current, room.criteria, criterion, Number(event.target.value)),
+                        )
+                      }
                       className="slider mt-3"
-                      style={sliderFill(liveWeights[criterion] ?? 1, 1, 100)}
+                      style={sliderFill(liveWeights[criterion] ?? 1, 1, 100 - Math.max(0, room.criteria.length - 1))}
                     />
                   </label>
                 ))}
-                <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-500">Tip: ‘구현 가능성’을 올리면 순위가 바뀌는 지점을 볼 수 있어요.</p>
+                <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-500">합계 {Object.values(liveWeights).reduce((sum, value) => sum + value, 0)}% · 한 기준을 움직이면 나머지는 자동 조정됩니다.</p>
               </div>
 
               <div className="rounded-3xl bg-stone-50 p-5">

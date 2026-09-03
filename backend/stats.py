@@ -17,6 +17,9 @@ N_SIMULATIONS = 1_000
 DIRICHLET_CONCENTRATION = 50.0
 AGREEMENT_HIGH_MAX = 0.8
 AGREEMENT_MID_MAX = 1.5
+WEIGHT_TOTAL_PERCENT = 100
+WEIGHT_MIN_PERCENT = 1
+NEARBY_FLIP_THRESHOLD_PERCENT = 15
 
 
 def _field(value: Any, name: str) -> Any:
@@ -45,6 +48,66 @@ def _normalise(weights: np.ndarray) -> np.ndarray:
     if total <= 0:
         return np.full(len(weights), 1.0 / len(weights))
     return weights / total
+
+
+def allocate_percentages(
+    values: Sequence[float],
+    total: int = WEIGHT_TOTAL_PERCENT,
+    minimum: int = WEIGHT_MIN_PERCENT,
+) -> np.ndarray:
+    """Use largest remainders and stable input order to produce an exact total."""
+
+    source = np.asarray(values, dtype=float)
+    if source.ndim != 1 or len(source) == 0:
+        raise ValueError("at least one weight is required")
+    if len(source) * minimum > total:
+        raise ValueError("minimum allocation exceeds total")
+    if not np.all(np.isfinite(source)) or np.any(source < 0):
+        raise ValueError("weights must be finite and non-negative")
+
+    budget = total - len(source) * minimum
+    value_total = float(np.sum(source))
+    shares = (
+        source / value_total * budget
+        if value_total > 0
+        else np.full(len(source), budget / len(source))
+    )
+    floors = np.floor(shares).astype(int)
+    remainder = budget - int(np.sum(floors))
+    order = sorted(
+        range(len(source)),
+        key=lambda index: (-(shares[index] - floors[index]), index),
+    )
+    for index in order[:remainder]:
+        floors[index] += 1
+    return floors + minimum
+
+
+def rebalance_percentages(
+    current: Sequence[float],
+    changed_index: int,
+    requested_value: int,
+) -> np.ndarray:
+    """Fix one integer percentage and redistribute the remainder proportionally."""
+
+    values = np.asarray(current, dtype=float)
+    if values.ndim != 1 or not 0 <= changed_index < len(values):
+        raise ValueError("changed weight is not present")
+    if len(values) == 1:
+        return np.array([WEIGHT_TOTAL_PERCENT], dtype=int)
+
+    maximum = WEIGHT_TOTAL_PERCENT - WEIGHT_MIN_PERCENT * (len(values) - 1)
+    changed = max(WEIGHT_MIN_PERCENT, min(maximum, round(requested_value)))
+    other_indices = [index for index in range(len(values)) if index != changed_index]
+    others = allocate_percentages(
+        values[other_indices],
+        total=WEIGHT_TOTAL_PERCENT - changed,
+        minimum=WEIGHT_MIN_PERCENT,
+    )
+    result = np.empty(len(values), dtype=int)
+    result[changed_index] = changed
+    result[other_indices] = others
+    return result
 
 
 def _read_submissions(
@@ -88,7 +151,7 @@ def _read_submissions(
 
 
 def _weight_flip_points(
-    team_weights: np.ndarray,
+    team_percentages: np.ndarray,
     mean_scores: np.ndarray,
     options: list[str],
     criteria: list[str],
@@ -97,34 +160,48 @@ def _weight_flip_points(
     flips: list[dict[str, Any]] = []
 
     for criterion_index, criterion in enumerate(criteria):
-        original = float(team_weights[criterion_index])
-        if original >= 1.0:
-            continue
-
-        for percentage_points in range(1, 101):
-            increased = min(1.0, original + percentage_points / 100.0)
-            candidate = team_weights.copy()
-            other_total = 1.0 - original
-            candidate *= (1.0 - increased) / other_total
-            candidate[criterion_index] = increased
-
-            new_winner_index = _winner(mean_scores @ candidate)
-            if new_winner_index != current_winner_index:
-                flips.append(
-                    {
-                        "type": "weight",
-                        "criterion": criterion,
-                        "from": round(original, 4),
-                        "to": round(increased, 4),
-                        "new_winner": options[new_winner_index],
-                    }
+        original = int(team_percentages[criterion_index])
+        maximum = WEIGHT_TOTAL_PERCENT - WEIGHT_MIN_PERCENT * (len(criteria) - 1)
+        for direction in (-1, 1):
+            boundary = WEIGHT_MIN_PERCENT if direction < 0 else maximum
+            for percentage_points in range(1, abs(boundary - original) + 1):
+                target = original + direction * percentage_points
+                candidate_percentages = rebalance_percentages(
+                    team_percentages,
+                    criterion_index,
+                    target,
                 )
-                break
-            if increased >= 1.0:
-                break
+                candidate = candidate_percentages / WEIGHT_TOTAL_PERCENT
+                new_winner_index = _winner(mean_scores @ candidate)
+                if new_winner_index != current_winner_index:
+                    flips.append(
+                        {
+                            "type": "weight",
+                            "criterion": criterion,
+                            "from": original / WEIGHT_TOTAL_PERCENT,
+                            "to": target / WEIGHT_TOTAL_PERCENT,
+                            "change": percentage_points / WEIGHT_TOTAL_PERCENT,
+                            "direction": "decrease" if direction < 0 else "increase",
+                            "proximity": (
+                                "nearby"
+                                if percentage_points <= NEARBY_FLIP_THRESHOLD_PERCENT
+                                else "theoretical"
+                            ),
+                            "new_winner": options[new_winner_index],
+                        }
+                    )
+                    break
 
-    # The closest flip is the most useful discussion item. Criteria order breaks ties.
-    flips.sort(key=lambda item: item["to"] - item["from"])
+    # The closest flip is the most useful discussion item. Criteria and direction
+    # order make ties deterministic.
+    criterion_order = {criterion: index for index, criterion in enumerate(criteria)}
+    flips.sort(
+        key=lambda item: (
+            item["change"],
+            criterion_order[item["criterion"]],
+            item["direction"] != "decrease",
+        )
+    )
     return flips
 
 
@@ -228,7 +305,11 @@ def analyze_room(
     weights, scores, first_choices, parsed = _read_submissions(
         members, option_names, criterion_names
     )
-    team_weight_values = _normalise(np.mean(weights, axis=0))
+    team_percentages = allocate_percentages(
+        _normalise(np.mean(weights, axis=0)),
+        minimum=0,
+    )
+    team_weight_values = team_percentages / WEIGHT_TOTAL_PERCENT
     mean_scores = np.mean(scores, axis=0)
     current_score_values = mean_scores @ team_weight_values
     current_winner_index = _winner(current_score_values)
@@ -279,7 +360,7 @@ def analyze_room(
     robust_choice = option_names[_winner(stability_values)]
 
     weight_flips = _weight_flip_points(
-        team_weight_values,
+        team_percentages,
         mean_scores,
         option_names,
         criterion_names,
@@ -299,18 +380,22 @@ def analyze_room(
         criterion_names,
     )
     discussion_agenda: list[str] = []
-    if weight_flips:
-        closest = weight_flips[0]
-        change = round((closest["to"] - closest["from"]) * 100)
+    nearby_weight_flips = [item for item in weight_flips if item["proximity"] == "nearby"]
+    if nearby_weight_flips:
+        closest = nearby_weight_flips[0]
+        change = round(abs(closest["to"] - closest["from"]) * 100)
+        direction = "오르면" if closest["direction"] == "increase" else "내리면"
         discussion_agenda.append(
-            f"{closest['criterion']} 중요도가 {change}%p 오르면 "
+            f"{closest['criterion']} 비중이 {change}%p {direction} "
             f"{closest['new_winner']}(으)로 바뀝니다. 이 기준을 먼저 논의하세요."
         )
     discussion_agenda.extend(conflict_agenda)
     if member_flip is not None:
         discussion_agenda.append(member_flip["description"] + ".")
+    if not nearby_weight_flips:
+        discussion_agenda.insert(0, "현재 결과는 가중치 변화에 비교적 견고합니다.")
     if not discussion_agenda:
-        discussion_agenda.append("결과를 뒤집는 가까운 쟁점보다 주요 가정을 먼저 확인하세요.")
+        discussion_agenda.append("주요 가정을 먼저 확인하세요.")
 
     return {
         "vote_share": vote_share,

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 Score = Annotated[int, Field(ge=1, le=5)]
-Weight = Annotated[int, Field(ge=1, le=10)]
+Weight = Annotated[int, Field(ge=1, le=100)]
 AgreementLevel = Literal["HIGH", "MID", "LOW"]
 SubmissionMode = Literal["anonymous", "named"]
 DefenseStatus = Literal["mitigated", "open", "invalid"]

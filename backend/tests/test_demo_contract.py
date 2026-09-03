@@ -27,8 +27,8 @@ def test_demo_data_matches_the_presentation_story():
     }
     assert result["current_winner"] == option_a
     assert result["robust_choice"] == option_b
-    assert result["stability"][option_a] == pytest.approx(0.474)
-    assert result["stability"][option_b] == pytest.approx(0.526)
+    assert result["stability"][option_a] == pytest.approx(0.477)
+    assert result["stability"][option_b] == pytest.approx(0.523)
     assert result["weight_agreement"]["구현 가능성"] == "LOW"
     assert result["score_agreement"][option_a]["구현 가능성"] == "LOW"
     assert result["hidden_conflicts"]

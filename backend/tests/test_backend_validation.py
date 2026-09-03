@@ -158,7 +158,7 @@ def invalid_submission_cases() -> list[tuple[str, dict]]:
     cases[5][1]["scores"]["A"]["가치"] = 0
     cases[6][1]["scores"]["A"]["가치"] = 6
     cases[7][1]["weights"]["가치"] = 0
-    cases[8][1]["weights"]["가치"] = 11
+    cases[8][1]["weights"]["가치"] = 101
     return cases
 
 

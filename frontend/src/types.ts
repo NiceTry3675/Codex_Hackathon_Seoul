@@ -81,6 +81,9 @@ export interface WeightFlipPoint {
   criterion: string;
   from: number;
   to: number;
+  change?: number;
+  direction?: "increase" | "decrease";
+  proximity?: "nearby" | "theoretical";
   new_winner: string;
 }
 

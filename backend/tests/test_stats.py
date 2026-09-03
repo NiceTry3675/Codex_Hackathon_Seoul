@@ -1,6 +1,6 @@
 import pytest
 
-from backend.stats import analyze_room
+from backend.stats import allocate_percentages, analyze_room, rebalance_percentages
 
 
 def _submission(scores, weights, first_choice, parsed=None):
@@ -29,6 +29,7 @@ def test_hand_calculated_scores_weights_and_agreement():
     result = analyze_room(submissions, ["A", "B"], ["quality", "speed"])
 
     assert result["team_weights"] == pytest.approx({"quality": 0.5, "speed": 0.5})
+    assert sum(result["team_weights"].values()) == pytest.approx(1.0)
     assert result["option_scores"] == pytest.approx({"A": 2.5, "B": 2.0})
     assert result["current_winner"] == "A"
     assert result["vote_share"] == {"A": 0.5, "B": 0.5}
@@ -77,8 +78,65 @@ def test_weight_flip_uses_one_percentage_point_steps():
         "criterion": "cost",
         "from": 0.4,
         "to": 0.51,
+        "change": 0.11,
+        "direction": "increase",
+        "proximity": "nearby",
         "new_winner": "B",
     }
+
+
+def test_weight_rebalancing_is_exact_proportional_and_deterministic():
+    assert allocate_percentages([1, 1, 1]).tolist() == [34, 33, 33]
+    assert rebalance_percentages([50, 30, 20], 0, 70).tolist() == [70, 18, 12]
+    assert rebalance_percentages([100, 0, 0], 0, 50).tolist() == [50, 25, 25]
+    assert rebalance_percentages([1], 0, 1).tolist() == [100]
+
+
+def test_weight_flip_searches_both_directions_and_classifies_distance():
+    nearby = analyze_room(
+        [
+            _submission(
+                {"A": {"quality": 5, "cost": 1}, "B": {"quality": 1, "cost": 5}},
+                {"quality": 6, "cost": 4},
+                "A",
+            )
+        ],
+        ["A", "B"],
+        ["quality", "cost"],
+    )
+    weight_flips = [item for item in nearby["flip_points"] if item["type"] == "weight"]
+    assert {item["direction"] for item in weight_flips} == {"increase", "decrease"}
+    assert all(item["proximity"] == "nearby" for item in weight_flips)
+
+    theoretical = analyze_room(
+        [
+            _submission(
+                {"A": {"quality": 5, "cost": 1}, "B": {"quality": 1, "cost": 3}},
+                {"quality": 8, "cost": 2},
+                "A",
+            )
+        ],
+        ["A", "B"],
+        ["quality", "cost"],
+    )
+    theoretical_flips = [
+        item for item in theoretical["flip_points"] if item["type"] == "weight"
+    ]
+    assert theoretical_flips
+    assert all(item["proximity"] == "theoretical" for item in theoretical_flips)
+    assert theoretical["discussion_agenda"][0] == (
+        "현재 결과는 가중치 변화에 비교적 견고합니다."
+    )
+
+
+def test_single_criterion_has_exact_weight_and_no_weight_flip():
+    result = analyze_room(
+        [_submission({"A": {"value": 5}, "B": {"value": 1}}, {"value": 9}, "A")],
+        ["A", "B"],
+        ["value"],
+    )
+    assert result["team_weights"] == {"value": 1.0}
+    assert not any(item["type"] == "weight" for item in result["flip_points"])
 
 
 def test_member_removal_and_hidden_conflict_are_descriptive():

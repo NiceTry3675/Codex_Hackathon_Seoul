@@ -17,9 +17,9 @@ def validate_demo_result(payload: dict) -> str:
         raise SystemExit("demo contract failed: current_winner must be option A")
     if analysis["robust_choice"] != option_b:
         raise SystemExit("demo contract failed: robust_choice must be option B")
-    if not math.isclose(analysis["stability"][option_a], 0.474, abs_tol=0.001):
+    if not math.isclose(analysis["stability"][option_a], 0.477, abs_tol=0.001):
         raise SystemExit("demo contract failed: option A stability drifted")
-    if not math.isclose(analysis["stability"][option_b], 0.526, abs_tol=0.001):
+    if not math.isclose(analysis["stability"][option_b], 0.523, abs_tol=0.001):
         raise SystemExit("demo contract failed: option B stability drifted")
 
     first_weight_flip = next(
@@ -42,7 +42,7 @@ def validate_demo_result(payload: dict) -> str:
 
     return (
         "demo contract ok: "
-        f"room={payload['room_code']} current=A robust=B stability=47.4/52.6 flip=1%p"
+        f"room={payload['room_code']} current=A robust=B stability=47.7/52.3 flip=1%p"
     )
 
 

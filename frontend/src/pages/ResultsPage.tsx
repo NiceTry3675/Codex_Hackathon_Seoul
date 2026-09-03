@@ -29,43 +29,6 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function useCountUp(target: number, duration = 900) {
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setValue(target);
-      return;
-    }
-    let frame = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setValue(target * eased);
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [target, duration]);
-
-  return value;
-}
-
-function StabilityDonut({ value }: { value: number }) {
-  const animated = useCountUp(value);
-  return (
-    <div
-      className="mx-auto mt-6 flex h-32 w-32 items-center justify-center rounded-full"
-      style={{ background: `conic-gradient(#3b5e48 ${animated * 360}deg, #e7e5e4 0deg)` }}
-    >
-      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-3xl font-semibold tracking-tight">
-        {percent(animated)}
-      </div>
-    </div>
-  );
-}
-
 function DecisionRecordPanel({ room, analysis }: { room: Room; analysis: AnalysisResponse }) {
   const [record, setRecord] = useState<DecisionRecord>();
   const [finalChoice, setFinalChoice] = useState(analysis.current_winner);
@@ -165,6 +128,20 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
   const winnerChanged = Boolean(liveWinner && liveWinner !== analysis.current_winner);
   const voteEntries = Object.entries(analysis.vote_share).sort(([, left], [, right]) => right - left);
   const stabilityEntries = Object.entries(analysis.stability).sort(([, left], [, right]) => right - left);
+  const stabilityPercentages = allocatePercentages(
+    analysis.stability,
+    stabilityEntries.map(([option]) => option),
+    100,
+    0,
+  );
+  const robustStability = analysis.stability[analysis.robust_choice] ?? 0;
+  const robustPercentage = stabilityPercentages[analysis.robust_choice] ?? 0;
+  const stabilityAssessment = robustStability >= 0.8
+    ? { label: "매우 안정적", description: "결과가 쉽게 바뀌지 않아요.", style: "bg-moss-100 text-moss-800" }
+    : robustStability >= 0.6
+      ? { label: "비교적 안정적", description: "대체로 유지되지만 일부 경우에는 바뀔 수 있어요.", style: "bg-amber-100 text-amber-900" }
+      : { label: "뒤집힐 수 있음", description: "기준의 중요도를 다르게 보면 결과가 바뀔 가능성이 있어요.", style: "bg-red-100 text-red-800" };
+  const alternativeStabilityEntries = stabilityEntries.filter(([option]) => option !== analysis.robust_choice);
   const nearbyFlipPoints = analysis.flip_points.filter(
     (item) => item.type === "member" || item.proximity === "nearby" || Math.abs(item.to - item.from) <= NEARBY_FLIP_THRESHOLD,
   );
@@ -177,16 +154,16 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
       <section className="border-b border-black/5 bg-sand">
         <div className="mx-auto max-w-5xl px-4 py-14 text-center sm:px-6 sm:py-20">
           <p className="eyebrow">Step 03 · Decision stress test</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">현재 결과는 얼마나 견고할까요?</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">결과가 쉽게 바뀌는지 확인했어요.</h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-stone-600">
-            현재 1위는 <strong className="text-ink">{analysis.current_winner}</strong>입니다. 하지만 조건이 조금만 달라져도 같은 결과일까요?
+            현재 1위는 <strong className="text-ink">{analysis.current_winner}</strong>입니다. 아래에서 결론과 꼭 논의할 부분만 확인하세요.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-2 text-xs font-semibold text-stone-500">
             <a href="#votes" className="rounded-full bg-white px-3 py-2 hover:text-ink">득표</a>
             <a href="#stability" className="rounded-full bg-white px-3 py-2 hover:text-ink">안정성</a>
             <a href="#conflict" className="rounded-full bg-white px-3 py-2 hover:text-ink">숨은 갈등</a>
             <a href="#flip" className="rounded-full bg-white px-3 py-2 hover:text-ink">뒤집힘 조건</a>
-            <a href="#debate" className="rounded-full bg-white px-3 py-2 hover:text-ink">AI 공방</a>
+            <a href="#debate" className="rounded-full bg-white px-3 py-2 hover:text-ink">위험 점검</a>
             <a href="#discussion" className="rounded-full bg-white px-3 py-2 hover:text-ink">논의 안건</a>
           </div>
         </div>
@@ -214,26 +191,49 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
 
         <section id="stability" className="card scroll-mt-28">
           <p className="eyebrow">02 · Decision stability</p>
-          <h2 className="section-title">가중치가 흔들리면 결과도 흔들릴까요?</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">팀의 기준 비중을 조금씩 바꿨을 때 각 선택지가 1위를 유지한 비율입니다.</p>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {stabilityEntries.map(([option, value]) => {
-              const robust = option === analysis.robust_choice;
-              return (
-                <div key={option} className={`rounded-3xl border p-5 ${robust ? "border-moss-500 bg-moss-50" : "border-black/5 bg-stone-50"}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm font-semibold leading-5">{option}</span>
-                    {robust && <span className="shrink-0 rounded-full bg-moss-600 px-2 py-1 text-[10px] font-bold text-white">MOST ROBUST</span>}
-                  </div>
-                  <StabilityDonut value={value} />
-                  <p className="mt-4 text-center text-xs text-stone-500">1위 유지 확률</p>
-                </div>
-              );
-            })}
+          <h2 className="section-title">현재 결과는 얼마나 안정적일까요?</h2>
+          <div className="mt-7 grid overflow-hidden rounded-3xl border border-moss-500/40 bg-moss-50 md:grid-cols-[1.15fr_0.85fr]">
+            <div className="p-6 sm:p-8">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${stabilityAssessment.style}`}>{stabilityAssessment.label}</span>
+                <span className="text-xs text-stone-500">가장 안정적인 선택</span>
+              </div>
+              <strong className="mt-5 block text-2xl tracking-[-0.03em] text-moss-900 sm:text-3xl">{analysis.robust_choice}</strong>
+              <div className="mt-6 flex items-end gap-3">
+                <strong className="text-6xl font-semibold tracking-[-0.07em] text-moss-800 sm:text-7xl">{robustPercentage}%</strong>
+                <span className="pb-2 text-sm font-semibold text-stone-500">1위가 된 비율</span>
+              </div>
+              <p className="mt-5 max-w-xl text-sm leading-6 text-stone-600">
+                평가 기준의 중요도를 조금씩 다르게 적용한 1,000가지 경우 중 약 {robustPercentage * 10}가지에서 이 선택지가 1위였습니다.
+              </p>
+              <p className="mt-2 text-sm font-semibold text-moss-800">{stabilityAssessment.description}</p>
+            </div>
+
+            <div className="border-t border-moss-500/20 bg-white/75 p-6 sm:p-8 md:border-l md:border-t-0">
+              <h3 className="text-sm font-bold text-stone-700">다른 선택지가 1위가 된 경우</h3>
+              <div className="mt-5 space-y-5">
+                {alternativeStabilityEntries.map(([option]) => {
+                  const value = stabilityPercentages[option] ?? 0;
+                  return (
+                    <div key={option}>
+                      <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+                        <span className="truncate font-medium text-stone-700">{option}</span>
+                        <strong className="tabular-nums text-stone-600">{value}%</strong>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+                        <div className="h-full rounded-full bg-stone-300" style={{ width: `${value}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                {alternativeStabilityEntries.length === 0 && <p className="text-sm text-stone-500">비교할 다른 선택지가 없습니다.</p>}
+              </div>
+            </div>
           </div>
           <details className="mt-6 rounded-2xl bg-stone-50 px-4 py-3 text-xs leading-5 text-stone-500">
-            <summary className="cursor-pointer font-semibold">계산 방법 보기</summary>
-            <p className="mt-2">팀 평균 주변의 여러 가중치 조합을 반복 계산한 설명용 지표이며, 통계적 유의성을 뜻하지 않습니다.</p>
+            <summary className="cursor-pointer font-semibold text-stone-700">어떻게 계산했나요?</summary>
+            <p className="mt-2">참여자들이 각 평가 기준에 배분한 중요도의 팀 평균을 기준으로, 중요도가 조금씩 달라지는 상황을 1,000번 만들어 순위를 다시 계산했습니다.</p>
+            <p className="mt-1">이 수치는 결과가 조건 변화에 얼마나 강한지 비교하는 설명용 지표이며, 실제 미래의 확률을 뜻하지 않습니다.</p>
           </details>
         </section>
 
@@ -266,14 +266,14 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
           <p className="eyebrow">04 · Flip point</p>
           <h2 className="section-title">가까운 뒤집힘 조건을 확인하세요.</h2>
           {nearbyFlipPoints.length === 0 && (
-            <p className="mt-5 rounded-2xl bg-moss-50 p-4 text-sm font-semibold text-moss-800">현재 결과는 가중치 변화에 비교적 견고합니다.</p>
+            <p className="mt-5 rounded-2xl bg-moss-50 p-4 text-sm font-semibold text-moss-800">현재 결과는 평가 기준의 중요도가 달라져도 비교적 안정적입니다.</p>
           )}
           <div className="mt-7 grid gap-4 md:grid-cols-2">
             {nearbyFlipPoints.map((flipPoint, index) => (
               <div key={index} className="rounded-3xl bg-ink p-6 text-white">
                 {flipPoint.type === "weight" ? (
                   <>
-                    <span className="text-xs font-bold uppercase tracking-[0.18em] text-moss-100">Weight shift</span>
+                    <span className="text-xs font-bold tracking-[0.18em] text-moss-100">기준 중요도 변화</span>
                     <div className="mt-5 flex items-baseline gap-3">
                       <strong className="text-4xl tracking-tight">{Math.round((flipPoint.to - flipPoint.from) * 100)}%p</strong>
                       <span className="text-sm text-white/60">{flipPoint.criterion}</span>
@@ -311,7 +311,7 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
           <div className="mt-4 grid items-end gap-7 md:grid-cols-[1fr_auto]">
             <div>
               <h2 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">조건 변화에 가장 견고한 선택</h2>
-              <p className="mt-4 max-w-2xl leading-7 text-white/75">가중치가 달라지는 여러 상황에서 가장 자주 1위를 차지한 옵션입니다. 정답이 아니라, 팀이 검토할 중요한 신호입니다.</p>
+              <p className="mt-4 max-w-2xl leading-7 text-white/75">평가 기준의 중요도가 달라지는 여러 상황에서 가장 자주 1위를 차지한 선택입니다. 정답이 아니라, 팀이 검토할 중요한 신호입니다.</p>
             </div>
             <div className="rounded-2xl bg-white px-5 py-4 text-right text-moss-700">
               <span className="block text-xs font-bold uppercase tracking-widest">Robust choice</span>
@@ -324,8 +324,8 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="eyebrow">Live simulator</p>
-              <h2 className="section-title">가중치를 움직여 직접 확인해 보세요.</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">서버 요청 없이 현재 브라우저에서 점수와 순위를 즉시 다시 계산합니다. 합계는 자동 정규화됩니다.</p>
+              <h2 className="section-title">평가 기준의 중요도를 바꿔 보세요.</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">어떤 기준을 더 중요하게 볼 때 결과가 바뀌는지 바로 확인할 수 있습니다. 합계는 자동으로 100%에 맞춰집니다.</p>
             </div>
             <button type="button" className="secondary-button" onClick={() => setLiveWeights(initialWeights)}>팀 평균으로 초기화</button>
           </div>
@@ -380,15 +380,15 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
                     </li>
                   ))}
                 </ol>
-                <p className="mt-4 text-right text-xs text-stone-500">5점 만점 가중 평균</p>
+                <p className="mt-4 text-right text-xs text-stone-500">기준 중요도를 반영한 5점 만점 평균</p>
               </div>
             </div>
           )}
         </section>
 
         <section id="debate" className="card scroll-mt-28">
-          <p className="eyebrow">06 · Devil's Advocate</p>
-          <h2 className="section-title">AI가 결정을 공격합니다. 팀이 방어하세요.</h2>
+          <p className="eyebrow">06 · 실행 전 점검</p>
+          <h2 className="section-title">결정 전에 놓친 위험을 확인해요.</h2>
           <DebatePanel roomCode={room.code} fallbackAdvocate={analysis.devils_advocate} onCompleted={onRefreshAnalysis} />
         </section>
 

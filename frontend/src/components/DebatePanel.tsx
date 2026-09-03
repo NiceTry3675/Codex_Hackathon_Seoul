@@ -19,29 +19,48 @@ interface DebatePanelProps {
   onCompleted: () => Promise<void> | void;
 }
 
-type Draft = Omit<DefenderAnswer, "challenge_id">;
+type Draft = Omit<DefenderAnswer, "challenge_id" | "status"> & { status?: DefenseStatus };
+type DraftTextField = "evidence" | "unknowns" | "mitigation";
 
 const MAX_TEXT = 2000;
 
 const statusOptions: Array<{ value: DefenseStatus; label: string; hint: string }> = [
-  { value: "mitigated", label: "대응책 있음", hint: "근거나 대응책으로 이 실패 조건을 막을 수 있습니다." },
-  { value: "open", label: "아직 미확인", hint: "검증이 필요하며 지금은 답할 근거가 없습니다." },
-  { value: "invalid", label: "질문 전제가 틀림", hint: "질문이 전제한 조건이 우리 상황과 맞지 않습니다." },
+  { value: "mitigated", label: "확인 완료", hint: "근거와 대비책이 있어요" },
+  { value: "open", label: "확인 필요", hint: "아직 검증하지 못했어요" },
+  { value: "invalid", label: "해당 없음", hint: "우리 상황과 맞지 않아요" },
 ];
 
 const statusLabel: Record<DefenseStatus, string> = {
-  mitigated: "대응책 있음",
-  open: "아직 미확인",
-  invalid: "질문 전제가 틀림",
+  mitigated: "확인 완료",
+  open: "확인 필요",
+  invalid: "해당 없음",
 };
 
 const resolutionMeta: Record<ChallengeResolution, { label: string; badge: string; border: string }> = {
-  resolved: { label: "해소됨", badge: "bg-moss-600 text-white", border: "border-moss-500" },
-  open: { label: "열린 쟁점", badge: "bg-amber-500 text-white", border: "border-amber-400" },
-  reframed: { label: "질문 재구성", badge: "bg-coral text-white", border: "border-coral" },
+  resolved: { label: "문제 없음", badge: "bg-moss-600 text-white", border: "border-moss-500" },
+  open: { label: "회의에서 확인", badge: "bg-amber-500 text-white", border: "border-amber-400" },
+  reframed: { label: "다시 확인", badge: "bg-coral text-white", border: "border-coral" },
 };
 
-const emptyDraft = (): Draft => ({ status: "open", evidence: "", unknowns: "", mitigation: "" });
+const responseFields: Record<DefenseStatus, Array<{ field: DraftTextField; label: string; placeholder: string }>> = {
+  mitigated: [
+    { field: "evidence", label: "확인한 근거", placeholder: "예: 지난 3개월 운영 데이터에서 문제가 없었어요." },
+    { field: "mitigation", label: "문제가 생기면 할 일", placeholder: "예: 오류율이 5%를 넘으면 이전 방식으로 돌아가요." },
+  ],
+  open: [
+    { field: "unknowns", label: "무엇을 확인해야 하나요?", placeholder: "예: 실제 사용자 5명에게 이번 주 안에 테스트해야 해요." },
+  ],
+  invalid: [
+    { field: "evidence", label: "왜 우리 상황과 맞지 않나요?", placeholder: "예: 우리는 이미 이 조건을 계약 단계에서 제외했어요." },
+  ],
+};
+
+const emptyDraft = (): Draft => ({ evidence: "", unknowns: "", mitigation: "" });
+
+function isDraftComplete(draft: Draft) {
+  if (!draft.status) return false;
+  return responseFields[draft.status].every(({ field }) => draft[field].trim().length > 0);
+}
 
 function splitMessages(debate: DebateState) {
   const questions: ChallengerQuestion[] = [];
@@ -92,12 +111,14 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [justCompleted, setJustCompleted] = useState(false);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setDebate(undefined);
     setLoadError("");
     setJustCompleted(false);
+    setActiveQuestionIndex(0);
     api
       .getDebate(roomCode)
       .then((state) => {
@@ -128,6 +149,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!debate || !parts || submitting) return;
+    if (parts.questions.some((question) => !isDraftComplete(drafts[question.challenge_id] ?? emptyDraft()))) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -135,7 +157,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
         const draft = drafts[question.challenge_id] ?? emptyDraft();
         return {
           challenge_id: question.challenge_id,
-          status: draft.status,
+          status: draft.status ?? "open",
           evidence: draft.evidence.trim(),
           unknowns: draft.unknowns.trim(),
           mitigation: draft.mitigation.trim(),
@@ -156,13 +178,13 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
     return (
       <ReadOnlyQuestions
         advocate={fallbackAdvocate}
-        note={`공방 기록을 불러오지 못해 질문만 표시합니다. 통계 분석 결과에는 영향이 없습니다. (${loadError})`}
+        note={`위험 점검을 불러오지 못해 질문만 표시합니다. 분석 결과에는 영향이 없습니다. (${loadError})`}
       />
     );
   }
 
   if (!debate || !parts) {
-    return <Spinner title="공방 기록을 불러오는 중이에요." detail="AI가 던진 질문과 팀의 답변을 확인합니다." />;
+    return <Spinner title="위험 점검을 준비하고 있어요." detail="결정 전에 확인할 질문을 불러옵니다." />;
   }
 
   const target = debate.evidence_snapshot.target;
@@ -170,23 +192,22 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
   if (debate.completed) {
     const counts = { resolved: 0, open: 0, reframed: 0 };
     for (const verdict of parts.verdicts.values()) counts[verdict.resolution] += 1;
+    const needsDiscussion = counts.open + counts.reframed;
 
     return (
-      <div className="mt-7 space-y-4">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-          <span className="rounded-full bg-moss-100 px-3 py-1.5 text-moss-700">해소 {counts.resolved}</span>
-          <span className="rounded-full bg-amber-100 px-3 py-1.5 text-amber-800">열린 쟁점 {counts.open}</span>
-          <span className="rounded-full bg-red-100 px-3 py-1.5 text-red-700">재구성 {counts.reframed}</span>
-          {debate.resolution_source === "fallback" && (
-            <span className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-stone-500" title="AI 판정을 받지 못해 모든 쟁점을 열린 상태로 유지했습니다.">
-              판정 폴백
-            </span>
-          )}
-          {justCompleted && (
-            <span className="ml-auto rounded-full bg-ink px-3 py-1.5 text-white" role="status">
-              열린 쟁점이 논의 안건에 추가됐어요
-            </span>
-          )}
+      <div className="mt-6 space-y-3">
+        <div className={`rounded-3xl p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 ${needsDiscussion > 0 ? "bg-amber-50" : "bg-moss-50"}`}>
+          <div>
+            <span className={`text-xs font-bold ${needsDiscussion > 0 ? "text-amber-800" : "text-moss-700"}`}>위험 점검 완료</span>
+            <strong className="mt-2 block text-2xl tracking-[-0.03em]">
+              {needsDiscussion > 0 ? `${needsDiscussion}가지는 회의에서 확인하세요.` : "추가로 확인할 위험이 없어요."}
+            </strong>
+            {justCompleted && needsDiscussion > 0 && <p className="mt-2 text-sm text-stone-600" role="status">확인할 내용은 아래 논의 안건에 자동으로 추가했습니다.</p>}
+          </div>
+          <div className="mt-4 flex gap-2 text-xs font-semibold sm:mt-0">
+            <span className="rounded-full bg-white px-3 py-2 text-moss-700">문제 없음 {counts.resolved}</span>
+            <span className="rounded-full bg-white px-3 py-2 text-amber-800">확인 필요 {needsDiscussion}</span>
+          </div>
         </div>
 
         {parts.questions.map((question, index) => {
@@ -194,137 +215,137 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
           const verdict = parts.verdicts.get(question.challenge_id);
           const meta = verdict ? resolutionMeta[verdict.resolution] : undefined;
           return (
-            <article key={question.challenge_id} className={`overflow-hidden rounded-3xl border-2 bg-white ${meta?.border ?? "border-black/5"}`}>
-              <div className="bg-ink p-4 text-sm leading-6 text-white/85 sm:p-5">
-                <span className="mr-2 text-xs font-bold uppercase tracking-[0.18em] text-moss-100">Challenger · Q{index + 1}</span>
-                <p className="mt-2">{question.question}</p>
+            <details key={question.challenge_id} className={`group overflow-hidden rounded-2xl border bg-white ${meta?.border ?? "border-black/5"}`}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 text-sm font-semibold sm:p-5">
+                <span className="min-w-0"><span className="mr-2 text-stone-400">{index + 1}</span>{question.question}</span>
+                {meta && <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${meta.badge}`}>{meta.label}</span>}
+              </summary>
+              <div className="border-t border-black/5 p-4 text-sm leading-6 sm:p-5">
+                {verdict && <p className="font-medium">{verdict.reason}</p>}
+                {verdict?.resolution === "reframed" && verdict.reframed_question && (
+                  <p className="mt-3 rounded-2xl bg-red-50 p-3"><span className="mr-2 font-bold text-coral">다시 확인할 질문</span>{verdict.reframed_question}</p>
+                )}
+                {defense && (
+                  <div className="mt-4 rounded-2xl bg-stone-50 p-4">
+                    <span className="text-xs font-bold text-stone-500">팀 답변 · {statusLabel[defense.status]}</span>
+                    <dl className="mt-2 space-y-2">
+                      {[
+                        ["확인한 근거", defense.evidence],
+                        ["확인해야 할 것", defense.unknowns],
+                        ["문제가 생기면 할 일", defense.mitigation],
+                      ].filter(([, value]) => value).map(([label, value]) => (
+                        <div key={label}><dt className="inline font-semibold">{label}: </dt><dd className="inline whitespace-pre-wrap">{value}</dd></div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
               </div>
-              {defense && (
-                <div className="border-b border-black/5 p-4 text-sm leading-6 sm:p-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">Defender · 팀</span>
-                    <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold">{statusLabel[defense.status]}</span>
-                  </div>
-                  <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-                    {[
-                      ["확인된 근거", defense.evidence],
-                      ["아직 모르는 점", defense.unknowns],
-                      ["대응책", defense.mitigation],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-2xl bg-stone-50 p-3">
-                        <dt className="text-xs font-bold text-stone-500">{label}</dt>
-                        <dd className={`mt-1 whitespace-pre-wrap ${value ? "" : "text-stone-400"}`}>{value || "—"}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              )}
-              {verdict && meta && (
-                <div className="p-4 text-sm leading-6 sm:p-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">Challenger · 판정</span>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${meta.badge}`}>{meta.label}</span>
-                  </div>
-                  <p className="mt-2">{verdict.reason}</p>
-                  {verdict.resolution === "reframed" && verdict.reframed_question && (
-                    <p className="mt-3 rounded-2xl border border-coral/40 bg-red-50/60 p-3">
-                      <span className="mr-2 font-bold text-coral">다시 묻기</span>
-                      {verdict.reframed_question}
-                    </p>
-                  )}
-                </div>
-              )}
-            </article>
+            </details>
           );
         })}
 
-        <p className="text-xs leading-5 text-stone-500">
-          공방은 점수·안정성·1위를 바꾸지 않습니다. 해소되지 않은 쟁점만 아래 논의 안건으로 되돌아갑니다.
-        </p>
+        {debate.resolution_source === "fallback" && <p className="text-xs text-stone-400">AI 확인을 완료하지 못해 모든 항목을 확인 필요 상태로 유지했습니다.</p>}
       </div>
     );
   }
 
   if (submitting) {
-    return <Spinner title="AI가 답변을 증거에 비춰 판정하고 있어요." detail="동결된 분석 증거만 사용합니다. 최대 1분 정도 걸릴 수 있어요." />;
+    return <Spinner title="답변을 확인하고 있어요." detail="회의에서 다시 볼 내용만 추리는 중입니다." />;
   }
 
-  return (
-    <form onSubmit={(event) => void submit(event)} className="mt-7 space-y-4">
-      <p className="text-sm leading-6 text-stone-500">
-        AI가 <strong className="text-ink">{target}</strong> 선택이 실패할 수 있는 조건을 질문합니다. 팀이 답하면 AI가 답변을 판정하고, 해소되지 않은 쟁점만 논의 안건으로 남깁니다.
-        {debate.challenger_source === "fallback" && " (AI 질문 생성을 받지 못해 기본 질문을 사용합니다.)"}
-      </p>
+  const questionCount = parts.questions.length;
+  const safeQuestionIndex = Math.min(activeQuestionIndex, Math.max(0, questionCount - 1));
+  const activeQuestion = parts.questions[safeQuestionIndex];
+  const activeDraft = activeQuestion ? drafts[activeQuestion.challenge_id] ?? emptyDraft() : emptyDraft();
+  const answeredCount = parts.questions.filter((question) => isDraftComplete(drafts[question.challenge_id] ?? emptyDraft())).length;
+  const allComplete = questionCount > 0 && answeredCount === questionCount;
 
-      {parts.questions.map((question, index) => {
-        const draft = drafts[question.challenge_id] ?? emptyDraft();
-        return (
-          <fieldset key={question.challenge_id} className="overflow-hidden rounded-3xl border border-black/5 bg-white">
-            <legend className="sr-only">질문 {index + 1}</legend>
-            <div className="bg-ink p-4 text-sm leading-6 text-white/85 sm:p-5">
-              <span className="text-xs font-bold uppercase tracking-[0.18em] text-moss-100">Challenger · Q{index + 1}</span>
-              <p className="mt-2">{question.question}</p>
-            </div>
-            <div className="space-y-4 p-4 sm:p-5">
-              <div className="grid gap-2 sm:grid-cols-3">
-                {statusOptions.map((option) => {
-                  const selected = draft.status === option.value;
-                  return (
-                    <label
-                      key={option.value}
-                      className={`cursor-pointer rounded-2xl border p-3 transition ${selected ? "border-moss-600 bg-moss-50" : "border-black/10 bg-stone-50"}`}
-                    >
-                      <input
-                        className="sr-only"
-                        type="radio"
-                        name={`status-${question.challenge_id}`}
-                        value={option.value}
-                        checked={selected}
-                        onChange={() => updateDraft(question.challenge_id, { status: option.value })}
-                      />
-                      <span className="block text-sm font-bold">{option.label}</span>
-                      <span className="mt-1 block text-xs leading-5 text-stone-500">{option.hint}</span>
-                    </label>
-                  );
-                })}
+  return (
+    <form onSubmit={(event) => void submit(event)} className="mt-6">
+      <div className="rounded-2xl bg-moss-50 p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+        <div>
+          <strong className="block text-sm text-moss-900">왜 이걸 하나요?</strong>
+          <p className="mt-1 text-sm leading-6 text-stone-600"><strong className="text-ink">{target}</strong>을 실행하기 전에 놓친 위험이 없는지 질문 {questionCount}개로 확인합니다.</p>
+        </div>
+        <div className="mt-3 flex shrink-0 gap-2 sm:mt-0">
+          <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-moss-700">약 1분</span>
+          {debate.challenger_source === "fallback" && <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-stone-500" title="AI 연결이 원활하지 않아 준비된 기본 질문을 사용합니다.">기본 질문</span>}
+        </div>
+      </div>
+
+      {activeQuestion ? (
+        <fieldset className="mt-5 overflow-hidden rounded-3xl border border-black/10 bg-white">
+          <legend className="sr-only">위험 점검 질문 {safeQuestionIndex + 1}</legend>
+          <div className="border-b border-black/5 p-5 sm:p-7">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-bold text-moss-700">위험 점검 {safeQuestionIndex + 1} / {questionCount}</span>
+              <div className="flex gap-1.5" aria-label={`${questionCount}개 중 ${answeredCount}개 답변 완료`}>
+                {parts.questions.map((question, index) => (
+                  <span key={question.challenge_id} className={`h-1.5 w-8 rounded-full ${index === safeQuestionIndex ? "bg-moss-600" : isDraftComplete(drafts[question.challenge_id] ?? emptyDraft()) ? "bg-moss-200" : "bg-stone-200"}`} />
+                ))}
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {(
-                  [
-                    ["evidence", "확인된 근거", "이미 확인된 사실만 적어요."],
-                    ["unknowns", "아직 모르는 점", "검증이 필요한 부분을 적어요."],
-                    ["mitigation", "대응책", "실패 시 무엇을 할지 적어요."],
-                  ] as const
-                ).map(([field, label, placeholder]) => (
+            </div>
+            <h3 className="mt-5 max-w-3xl text-xl font-semibold leading-8 tracking-[-0.02em] sm:text-2xl">{activeQuestion.question}</h3>
+          </div>
+
+          <div className="p-5 sm:p-7">
+            <p className="text-sm font-semibold text-stone-700">현재 상태를 선택하세요.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {statusOptions.map((option) => {
+                const selected = activeDraft.status === option.value;
+                return (
+                  <label key={option.value} className={`cursor-pointer rounded-2xl border p-4 transition ${selected ? "border-moss-600 bg-moss-50 shadow-sm" : "border-black/10 bg-white hover:bg-stone-50"}`}>
+                    <input
+                      className="sr-only"
+                      type="radio"
+                      name={`status-${activeQuestion.challenge_id}`}
+                      value={option.value}
+                      checked={selected}
+                      onChange={() => updateDraft(activeQuestion.challenge_id, { status: option.value })}
+                    />
+                    <span className="block text-sm font-bold">{option.label}</span>
+                    <span className="mt-1 block text-xs text-stone-500">{option.hint}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {activeDraft.status && (
+              <div className={`mt-5 grid gap-4 ${responseFields[activeDraft.status].length > 1 ? "sm:grid-cols-2" : ""}`}>
+                {responseFields[activeDraft.status].map(({ field, label, placeholder }) => (
                   <label key={field} className="block">
-                    <span className="mb-1.5 block text-xs font-bold text-stone-600">{label}</span>
+                    <span className="mb-2 block text-sm font-semibold text-stone-700">{label}</span>
                     <textarea
-                      className="min-h-24 w-full rounded-2xl border border-black/10 bg-stone-50 px-3 py-2.5 text-sm placeholder:text-stone-400"
-                      value={draft[field]}
+                      className="min-h-28 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm leading-6 placeholder:text-stone-400"
+                      value={activeDraft[field]}
                       maxLength={MAX_TEXT}
                       placeholder={placeholder}
-                      onChange={(event) => updateDraft(question.challenge_id, { [field]: event.target.value })}
+                      required
+                      onChange={(event) => updateDraft(activeQuestion.challenge_id, { [field]: event.target.value })}
                     />
                   </label>
                 ))}
               </div>
-            </div>
-          </fieldset>
-        );
-      })}
+            )}
+          </div>
+        </fieldset>
+      ) : <p className="mt-5 rounded-2xl bg-stone-50 p-4 text-sm text-stone-500">확인할 질문이 없습니다.</p>}
 
       {submitError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
           {submitError}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-stone-500">답변은 한 번만 제출할 수 있고, 제출 후 AI가 최종 판정을 내립니다.</p>
-        <button type="submit" className="primary-button" disabled={submitting || parts.questions.length === 0}>
-          답변 제출하고 판정 받기
-        </button>
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <button type="button" className="secondary-button" onClick={() => setActiveQuestionIndex((current) => Math.max(0, current - 1))} disabled={safeQuestionIndex === 0}>이전</button>
+        {safeQuestionIndex < questionCount - 1 ? (
+          <button type="button" className="primary-button" onClick={() => setActiveQuestionIndex((current) => Math.min(questionCount - 1, current + 1))} disabled={!isDraftComplete(activeDraft)}>다음 질문</button>
+        ) : (
+          <button type="submit" className="primary-button" disabled={submitting || !allComplete}>점검 결과 확인하기</button>
+        )}
       </div>
+      <p className="mt-3 text-right text-xs text-stone-400">제출 후에는 답변을 수정할 수 없습니다.</p>
     </form>
   );
 }

@@ -125,7 +125,7 @@ def test_weight_flip_searches_both_directions_and_classifies_distance():
     assert theoretical_flips
     assert all(item["proximity"] == "theoretical" for item in theoretical_flips)
     assert theoretical["discussion_agenda"][0] == (
-        "현재 결과는 가중치 변화에 비교적 견고합니다."
+        "현재 결과는 평가 기준의 중요도가 달라져도 비교적 안정적입니다."
     )
 
 

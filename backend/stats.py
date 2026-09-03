@@ -393,7 +393,7 @@ def analyze_room(
     if member_flip is not None:
         discussion_agenda.append(member_flip["description"] + ".")
     if not nearby_weight_flips:
-        discussion_agenda.insert(0, "현재 결과는 가중치 변화에 비교적 견고합니다.")
+        discussion_agenda.insert(0, "현재 결과는 평가 기준의 중요도가 달라져도 비교적 안정적입니다.")
     if not discussion_agenda:
         discussion_agenda.append("주요 가정을 먼저 확인하세요.")
 

@@ -368,10 +368,6 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           )}
         </section>
 
-        <div className="flex justify-center" aria-hidden="true">
-          <span className="text-xl text-stone-300">↓</span>
-        </div>
-
         <section className="rounded-3xl border border-black/10 bg-stone-50/70 p-5 sm:p-6">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div className="flex gap-3">

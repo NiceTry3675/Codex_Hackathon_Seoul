@@ -41,10 +41,24 @@ def main() -> None:
         room.raise_for_status()
         code = room.json()["code"]
         for submission in data["submissions"]:
-            response = client.post(f"/api/rooms/{code}/submit", json=submission)
-            response.raise_for_status()
+            with TestClient(app) as participant:
+                participant.get(f"/api/rooms/{code}").raise_for_status()
+                response = participant.post(f"/api/rooms/{code}/submit", json=submission)
+                response.raise_for_status()
         analysis = client.get(f"/api/rooms/{code}/analysis")
         analysis.raise_for_status()
+        decision = client.post(
+            f"/api/rooms/{code}/decision-record",
+            json={
+                "final_choice": analysis.json()["robust_choice"],
+                "final_reason": "분석 결과와 대응 가능한 위험을 검토했습니다.",
+            },
+        )
+        decision.raise_for_status()
+        stored_decision = client.get(f"/api/rooms/{code}/decision-record")
+        stored_decision.raise_for_status()
+        if stored_decision.json() != decision.json():
+            raise SystemExit("local E2E failed: decision record did not round trip")
 
     print(validate_demo_result({"room_code": code, "analysis": analysis.json()}))
     print("local in-process E2E passed")

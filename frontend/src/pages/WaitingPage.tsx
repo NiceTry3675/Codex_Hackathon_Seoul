@@ -95,6 +95,7 @@ function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProp
           {!room.is_complete && <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />}
           {room.is_complete ? "입력이 모두 완료되었습니다." : "3초마다 제출 인원을 확인하고 있어요."}
         </div>
+        <p className="mt-2 text-xs text-stone-400">{new Date(room.expires_at).toLocaleString("ko-KR")}까지 참여할 수 있어요.</p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={refreshing || loading}>

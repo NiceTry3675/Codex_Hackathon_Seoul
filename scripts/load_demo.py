@@ -5,14 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from http.cookiejar import CookieJar
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def post_json(url: str, payload: dict) -> dict:
+def browser():
+    return build_opener(HTTPCookieProcessor(CookieJar()))
+
+
+def post_json(opener, url: str, payload: dict) -> dict:
     request = Request(
         url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -20,16 +25,16 @@ def post_json(url: str, payload: dict) -> dict:
         method="POST",
     )
     try:
-        with urlopen(request, timeout=15) as response:
+        with opener.open(request, timeout=15) as response:
             return json.load(response)
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise SystemExit(f"POST {url} failed ({exc.code}): {detail}") from exc
 
 
-def get_json(url: str) -> dict:
+def get_json(opener, url: str) -> dict:
     try:
-        with urlopen(url, timeout=15) as response:
+        with opener.open(url, timeout=15) as response:
             return json.load(response)
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -43,13 +48,16 @@ def main() -> None:
     base_url = args.base_url.rstrip("/")
 
     data = json.loads((ROOT / "demo_data.json").read_text(encoding="utf-8"))
-    room = post_json(f"{base_url}/api/rooms", data["room"])
+    creator = browser()
+    room = post_json(creator, f"{base_url}/api/rooms", data["room"])
     code = room["code"]
 
     for submission in data["submissions"]:
-        post_json(f"{base_url}/api/rooms/{code}/submit", submission)
+        participant = browser()
+        get_json(participant, f"{base_url}/api/rooms/{code}")
+        post_json(participant, f"{base_url}/api/rooms/{code}/submit", submission)
 
-    result = get_json(f"{base_url}/api/rooms/{code}/analysis")
+    result = get_json(creator, f"{base_url}/api/rooms/{code}/analysis")
     print(json.dumps({"room_code": code, "analysis": result}, ensure_ascii=False, indent=2))
 
 

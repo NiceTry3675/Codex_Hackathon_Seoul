@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 from math import isfinite
+from threading import Barrier, Lock
 
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
@@ -12,7 +14,7 @@ import pytest
 import backend.auth as auth
 import backend.main as main
 from backend.main import app, room_analysis_locks, rooms
-from backend.models import AuthUser, Room
+from backend.models import AuthUser, Room, Submission
 from backend.storage import RoomStore
 
 
@@ -269,15 +271,17 @@ def test_tied_analysis_is_complete_finite_and_deterministic(client: TestClient):
     ).json()
     tied_scores = {"A": {"가치": 3}, "B": {"가치": 3}}
     for first_choice in ("A", "B"):
-        response = client.post(
-            f"/api/rooms/{room['code']}/submit",
-            json={
-                "scores": tied_scores,
-                "weights": {"가치": 5},
-                "first_choice": first_choice,
-                "reason": "",
-            },
-        )
+        with TestClient(app) as participant:
+            participant.get(f"/api/rooms/{room['code']}").raise_for_status()
+            response = participant.post(
+                f"/api/rooms/{room['code']}/submit",
+                json={
+                    "scores": tied_scores,
+                    "weights": {"가치": 5},
+                    "first_choice": first_choice,
+                    "reason": "",
+                },
+            )
         assert response.status_code == 201
 
     first = client.get(f"/api/rooms/{room['code']}/analysis")
@@ -346,9 +350,25 @@ class FakeDynamoTable:
     def __init__(self) -> None:
         self.items: dict[str, dict] = {}
 
-    def put_item(self, *, Item: dict, ConditionExpression: str | None = None) -> dict:
+    def put_item(
+        self,
+        *,
+        Item: dict,
+        ConditionExpression: str | None = None,
+        ExpressionAttributeNames: dict | None = None,
+        ExpressionAttributeValues: dict | None = None,
+    ) -> dict:
         code = Item["code"]
-        if ConditionExpression and code in self.items:
+        create_conflict = ConditionExpression == "attribute_not_exists(code)" and code in self.items
+        version_conflict = (
+            ConditionExpression == "#version = :expected_version"
+            and (
+                code not in self.items
+                or self.items[code].get("version")
+                != (ExpressionAttributeValues or {}).get(":expected_version")
+            )
+        )
+        if create_conflict or version_conflict:
             raise ClientError(
                 {
                     "Error": {
@@ -367,6 +387,20 @@ class FakeDynamoTable:
         return {"Item": deepcopy(item)} if item else {}
 
 
+class ConcurrentFakeDynamoTable(FakeDynamoTable):
+    def __init__(self) -> None:
+        super().__init__()
+        self.version_barrier = Barrier(2)
+        self.write_lock = Lock()
+
+    def put_item(self, **kwargs) -> dict:
+        if kwargs.get("ConditionExpression") == "#version = :expected_version":
+            self.version_barrier.wait(timeout=1)
+            with self.write_lock:
+                return super().put_item(**kwargs)
+        return super().put_item(**kwargs)
+
+
 def test_dynamodb_store_create_get_collision_and_save_round_trip():
     table = FakeDynamoTable()
     store = RoomStore({})
@@ -382,6 +416,8 @@ def test_dynamodb_store_create_get_collision_and_save_round_trip():
 
     assert store.persistent is True
     assert store.create(room) is True
+    assert table.items[room.code]["expires_at"] == int(room.expires_at.timestamp())
+    assert table.items[room.code]["version"] == 0
     assert store.create(room) is False
     assert store.get("abc123") == room
 
@@ -389,3 +425,70 @@ def test_dynamodb_store_create_get_collision_and_save_round_trip():
     store.save(room)
     assert store.get("ABC123").question == "수정된 질문"
     assert store.get("ZZZZZZ") is None
+
+
+def test_dynamodb_submission_uses_versioned_conditional_write_and_token_contract():
+    table = FakeDynamoTable()
+    store = RoomStore({})
+    store._table_name = "consensus-rooms"
+    store._table = table
+    room = Room(
+        code="TOK123",
+        question="질문",
+        options=["A", "B"],
+        criteria=["가치"],
+        expected_members=2,
+    )
+    submission = Submission(
+        id="submission-1",
+        scores={"A": {"가치": 5}, "B": {"가치": 3}},
+        weights={"가치": 100},
+        first_choice="A",
+        reason="",
+    )
+    assert store.create(room) is True
+
+    first, saved = store.append_submission(room.code, submission, "a" * 64)
+    duplicate, duplicate_room = store.append_submission(room.code, submission, "a" * 64)
+
+    assert first == "ok"
+    assert saved is not None and saved.version == 1
+    assert duplicate == "duplicate_token"
+    assert duplicate_room is not None and len(duplicate_room.submissions) == 1
+    assert table.items[room.code]["version"] == 1
+    assert "a" * 64 in table.items[room.code]["room_json"]
+
+
+def test_dynamodb_concurrent_same_token_succeeds_only_once():
+    table = ConcurrentFakeDynamoTable()
+    first_store = RoomStore({})
+    second_store = RoomStore({})
+    for store in (first_store, second_store):
+        store._table_name = "consensus-rooms"
+        store._table = table
+    room = Room(
+        code="RACE12",
+        question="질문",
+        options=["A", "B"],
+        criteria=["가치"],
+        expected_members=2,
+    )
+    submission = Submission(
+        id="submission-race",
+        scores={"A": {"가치": 5}, "B": {"가치": 3}},
+        weights={"가치": 100},
+        first_choice="A",
+        reason="",
+    )
+    assert first_store.create(room) is True
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = sorted(
+            executor.map(
+                lambda store: store.append_submission(room.code, submission, "b" * 64)[0],
+                (first_store, second_store),
+            )
+        )
+
+    assert outcomes == ["duplicate_token", "ok"]
+    assert len(first_store.get(room.code).submissions) == 1

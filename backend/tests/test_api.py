@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from threading import Barrier, Event, Lock
 
 from fastapi import HTTPException
@@ -168,7 +169,9 @@ def test_room_status_never_exposes_individual_submissions(client: TestClient):
         "criteria",
         "context",
         "expected_members",
-        "submission_mode",
+            "submission_mode",
+            "created_at",
+            "expires_at",
         "participant_names",
         "submission_count",
         "is_complete",
@@ -266,7 +269,6 @@ def test_submission_is_rejected_after_the_room_is_full(client: TestClient):
 
 def test_concurrent_final_submissions_cannot_overfill_a_room(client: TestClient, monkeypatch):
     room = client.post("/api/rooms", json=room_payload()).json()
-    payload = SubmissionCreate.model_validate(submission_payload())
     both_parsing = Barrier(2)
 
     def synchronized_parse(*_args):
@@ -276,17 +278,87 @@ def test_concurrent_final_submissions_cannot_overfill_a_room(client: TestClient,
     monkeypatch.setattr(main, "parse_opinion", synchronized_parse)
 
     def submit_once():
-        try:
-            main.submit_opinion(payload, room["code"])
-            return 201
-        except HTTPException as exc:
-            return exc.status_code
+        with TestClient(app) as participant:
+            participant.get(f"/api/rooms/{room['code']}").raise_for_status()
+            return participant.post(
+                f"/api/rooms/{room['code']}/submit",
+                json=submission_payload(),
+            ).status_code
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         statuses = sorted(executor.map(lambda _: submit_once(), range(2)))
 
     assert statuses == [201, 409]
     assert len(rooms[room["code"]].submissions) == 1
+
+
+def test_anonymous_token_blocks_repeat_submission_from_same_browser(client: TestClient):
+    payload = room_payload()
+    payload["expected_members"] = 2
+    room = client.post("/api/rooms", json=payload).json()
+    raw_token = client.cookies.get(f"synq_participation_{room['code']}")
+    assert raw_token
+
+    first = client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    repeated = client.post(f"/api/rooms/{room['code']}/submit", json=submission_payload())
+    with TestClient(app) as another_browser:
+        another_browser.get(f"/api/rooms/{room['code']}").raise_for_status()
+        other = another_browser.post(
+            f"/api/rooms/{room['code']}/submit",
+            json=submission_payload(),
+        )
+
+    assert first.status_code == 201
+    assert repeated.status_code == 409
+    assert repeated.json()["detail"] == "this browser already submitted to this room"
+    assert other.status_code == 201
+    assert len(rooms[room["code"]].used_anonymous_token_hashes) == 2
+    assert all(len(value) == 64 for value in rooms[room["code"]].used_anonymous_token_hashes)
+    assert raw_token not in rooms[room["code"]].model_dump_json()
+
+
+def test_same_anonymous_token_concurrently_succeeds_only_once(client: TestClient, monkeypatch):
+    payload = room_payload()
+    payload["expected_members"] = 2
+    room = client.post("/api/rooms", json=payload).json()
+    both_parsing = Barrier(2)
+
+    def synchronized_parse(*_args):
+        both_parsing.wait(timeout=1)
+        return None
+
+    monkeypatch.setattr(main, "parse_opinion", synchronized_parse)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda _: client.post(
+                    f"/api/rooms/{room['code']}/submit",
+                    json=submission_payload(),
+                ),
+                range(2),
+            )
+        )
+
+    assert sorted(response.status_code for response in responses) == [201, 409]
+    assert len(rooms[room["code"]].submissions) == 1
+
+
+def test_expired_room_blocks_read_submit_and_analysis_and_is_cleaned(client: TestClient):
+    created = client.post("/api/rooms", json={**room_payload(), "expires_in_hours": 6})
+    assert created.status_code == 201
+    room = created.json()
+    created_at = datetime.fromisoformat(room["created_at"].replace("Z", "+00:00"))
+    expires_at = datetime.fromisoformat(room["expires_at"].replace("Z", "+00:00"))
+    assert expires_at - created_at == timedelta(hours=6)
+
+    rooms[room["code"]].expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    assert client.get(f"/api/rooms/{room['code']}").status_code == 404
+    assert client.post(
+        f"/api/rooms/{room['code']}/submit", json=submission_payload()
+    ).status_code == 404
+    assert client.get(f"/api/rooms/{room['code']}/analysis").status_code == 404
+    assert room["code"] not in rooms
 
 
 def test_devils_advocate_is_cached_after_the_first_analysis(client: TestClient, monkeypatch):

@@ -46,6 +46,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   const [options, setOptions] = useState<string[]>(INITIAL_OPTIONS);
   const [criteria, setCriteria] = useState<string[]>(INITIAL_CRITERIA);
   const [expectedMembers, setExpectedMembers] = useState(4);
+  const [expiresInHours, setExpiresInHours] = useState(24);
   const [submissionMode, setSubmissionMode] = useState<"anonymous" | "named">("anonymous");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<CriteriaSuggestResponse>();
@@ -138,6 +139,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
       context: context.trim(),
       expected_members: expectedMembers,
       submission_mode: submissionMode,
+      expires_in_hours: expiresInHours,
     }).catch(() => undefined);
   };
 
@@ -336,10 +338,21 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           )}
         </section>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold text-stone-600">참여 인원</span>
-          <input type="number" min={1} max={100} className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={expectedMembers} onChange={(event) => setExpectedMembers(Number(event.target.value))} required />
-        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-sm font-bold text-stone-600">참여 인원</span>
+            <input type="number" min={1} max={100} className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={expectedMembers} onChange={(event) => setExpectedMembers(Number(event.target.value))} required />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-bold text-stone-600">방 유효 시간</span>
+            <select className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" value={expiresInHours} onChange={(event) => setExpiresInHours(Number(event.target.value))}>
+              <option value={6}>6시간</option>
+              <option value={24}>24시간</option>
+              <option value={72}>3일</option>
+              <option value={168}>7일</option>
+            </select>
+          </label>
+        </div>
 
         <fieldset>
           <legend className="mb-3 text-sm font-bold text-stone-600">제출 방식</legend>

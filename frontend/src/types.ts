@@ -25,6 +25,8 @@ export interface Room {
   context?: string;
   expected_members: number;
   submission_mode: "anonymous" | "named";
+  created_at: string;
+  expires_at: string;
   participant_names: string[];
   submission_count: number;
   is_complete: boolean;
@@ -37,6 +39,7 @@ export interface CreateRoomPayload {
   context?: string;
   expected_members?: number;
   submission_mode?: "anonymous" | "named";
+  expires_in_hours?: number;
 }
 
 export type CreateRoomResponse = Room;

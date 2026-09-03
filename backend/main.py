@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import os
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
@@ -93,6 +96,65 @@ room_store = RoomStore(rooms)
 rooms_lock = Lock()
 room_analysis_locks: dict[str, Lock] = {}
 ROOM_CODE_ALPHABET = string.ascii_uppercase + string.digits
+PARTICIPATION_COOKIE_PREFIX = "synq_participation_"
+_participation_secret = (
+    os.getenv("ANONYMOUS_TOKEN_SECRET")
+    or os.getenv("SESSION_SECRET")
+    or secrets.token_urlsafe(48)
+).encode("utf-8")
+
+
+def _participation_cookie_name(code: str) -> str:
+    return f"{PARTICIPATION_COOKIE_PREFIX}{code.upper()}"
+
+
+def _issue_participation_token(code: str) -> str:
+    nonce = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        _participation_secret,
+        f"{code.upper()}:{nonce}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{nonce}.{signature}"
+
+
+def _valid_participation_token(code: str, token: str | None) -> bool:
+    if not token or "." not in token:
+        return False
+    nonce, supplied_signature = token.rsplit(".", 1)
+    expected_signature = hmac.new(
+        _participation_secret,
+        f"{code.upper()}:{nonce}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(supplied_signature, expected_signature)
+
+
+def _hash_participation_token(code: str, token: str) -> str:
+    return hashlib.sha256(f"{code.upper()}:{token}".encode("utf-8")).hexdigest()
+
+
+def _ensure_participation_cookie(
+    request: Request,
+    response: Response,
+    room: Room,
+) -> None:
+    if room.submission_mode != "anonymous":
+        return
+    name = _participation_cookie_name(room.code)
+    token = request.cookies.get(name)
+    if not _valid_participation_token(room.code, token):
+        token = _issue_participation_token(room.code)
+    max_age = max(1, int((room.expires_at - datetime.now(timezone.utc)).total_seconds()))
+    response.set_cookie(
+        key=name,
+        value=token,
+        max_age=max_age,
+        httponly=True,
+        secure=session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
 
 
 def _new_room_code() -> str:
@@ -121,6 +183,8 @@ def _room_response(room: Room) -> RoomResponse:
         context=room.context,
         expected_members=room.expected_members,
         submission_mode=room.submission_mode,
+        created_at=room.created_at,
+        expires_at=room.expires_at,
         participant_names=(
             [
                 submission.participant_name
@@ -304,7 +368,7 @@ def suggest_room_criteria(payload: CriteriaSuggestRequest) -> CriteriaSuggestRes
 
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
-def create_room(request: Request, payload: RoomCreate) -> RoomResponse:
+def create_room(request: Request, response: Response, payload: RoomCreate) -> RoomResponse:
     if payload.submission_mode == "named" and user_from_request(request) is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -313,18 +377,30 @@ def create_room(request: Request, payload: RoomCreate) -> RoomResponse:
     with rooms_lock:
         while True:
             code = _new_room_code()
-            room = Room(code=code, submissions=[], **payload.model_dump())
+            created_at = datetime.now(timezone.utc)
+            room = Room(
+                code=code,
+                submissions=[],
+                created_at=created_at,
+                expires_at=created_at + timedelta(hours=payload.expires_in_hours),
+                **payload.model_dump(),
+            )
             if room_store.create(room):
                 break
         room_analysis_locks[code] = Lock()
+    _ensure_participation_cookie(request, response, room)
     return _room_response(room)
 
 
 @app.get("/api/rooms/{code}", response_model=RoomResponse)
 def get_room(
+    request: Request,
+    response: Response,
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> RoomResponse:
-    return _room_response(_get_room(code))
+    room = _get_room(code)
+    _ensure_participation_cookie(request, response, room)
+    return _room_response(room)
 
 
 @app.post(
@@ -334,6 +410,7 @@ def get_room(
 )
 def submit_opinion(
     payload: SubmissionCreate,
+    request: Request,
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
@@ -352,6 +429,15 @@ def submit_opinion(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="participant_name must be omitted for anonymous rooms",
         )
+    token_hash: str | None = None
+    if room.submission_mode == "anonymous":
+        raw_token = request.cookies.get(_participation_cookie_name(room.code))
+        if not _valid_participation_token(room.code, raw_token):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="a valid room participation token is required",
+            )
+        token_hash = _hash_participation_token(room.code, raw_token)
     _require_exact_keys(set(payload.scores), room.options, "scores")
     _require_exact_keys(set(payload.weights), room.criteria, "weights")
     for option, criterion_scores in payload.scores.items():
@@ -376,28 +462,24 @@ def submit_opinion(
         **payload.model_dump(),
     )
 
-    with rooms_lock:
-        submission_lock = room_analysis_locks.setdefault(code.upper(), Lock())
-
-    with submission_lock:
-        room = _get_room(code)
-        if len(room.submissions) >= room.expected_members:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="room is full",
-            )
-
-        if payload.participant_name is not None and any(
-            item.participant_name == payload.participant_name for item in room.submissions
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="participant name already submitted",
-            )
-
-        room.submissions.append(submission)
-        submission_count = len(room.submissions)
-        room_store.save(room)
+    outcome, room = room_store.append_submission(room.code, submission, token_hash)
+    if outcome != "ok" or room is None:
+        detail_by_outcome = {
+            "full": "room is full",
+            "duplicate_token": "this browser already submitted to this room",
+            "duplicate_name": "participant name already submitted",
+            "not_found": "room not found",
+            "conflict": "submission conflicted with another request; please retry",
+        }
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if outcome == "not_found"
+                else status.HTTP_409_CONFLICT
+            ),
+            detail=detail_by_outcome.get(outcome, "submission failed"),
+        )
+    submission_count = len(room.submissions)
     return SubmitResponse(
         id=submission.id,
         submission_count=submission_count,

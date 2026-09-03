@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -157,6 +157,7 @@ class RoomCreate(ApiModel):
     context: str = Field(default="", max_length=CONTEXT_MAX_LENGTH)
     expected_members: int = Field(default=4, ge=1, le=100)
     submission_mode: SubmissionMode = "anonymous"
+    expires_in_hours: int = Field(default=24, ge=1, le=168, exclude=True)
 
     @field_validator("question")
     @classmethod
@@ -237,6 +238,10 @@ class Room(ApiModel):
     context: str = ""
     expected_members: int = 4
     submission_mode: SubmissionMode = "anonymous"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=24))
+    version: int = Field(default=0, ge=0)
+    used_anonymous_token_hashes: list[str] = Field(default_factory=list)
     submissions: list[Submission] = Field(default_factory=list)
     devils_advocate: DevilsAdvocate | None = None
     devils_advocate_generated: bool = False
@@ -253,6 +258,8 @@ class RoomResponse(ApiModel):
     context: str = ""
     expected_members: int
     submission_mode: SubmissionMode
+    created_at: datetime
+    expires_at: datetime
     participant_names: list[str] = Field(default_factory=list)
     submission_count: int
     is_complete: bool
@@ -263,6 +270,10 @@ class SubmitResponse(ApiModel):
     submission_count: int
     expected_members: int
     is_complete: bool
+
+
+class ParticipationTokenResponse(ApiModel):
+    expires_at: datetime
 
 
 class HealthResponse(ApiModel):

@@ -22,6 +22,7 @@ export interface Room {
   question: string;
   options: string[];
   criteria: string[];
+  context?: string;
   expected_members: number;
   submission_mode: "anonymous" | "named";
   participant_names: string[];
@@ -33,11 +34,32 @@ export interface CreateRoomPayload {
   question: string;
   options: string[];
   criteria: string[];
+  context?: string;
   expected_members?: number;
   submission_mode?: "anonymous" | "named";
 }
 
 export type CreateRoomResponse = Room;
+
+/** 백엔드 RoomCreate.context / CriteriaSuggestRequest.context 상한과 동일. */
+export const CONTEXT_MAX_LENGTH = 20_000;
+
+export interface CriterionSuggestion {
+  name: string;
+  why: string;
+}
+
+export interface CriteriaSuggestPayload {
+  question: string;
+  options: string[];
+  existing_criteria: string[];
+  context: string;
+}
+
+export interface CriteriaSuggestResponse {
+  criteria: CriterionSuggestion[];
+  source: "live" | "fallback";
+}
 
 export interface SubmissionPayload {
   participant_name?: string;

@@ -1,4 +1,4 @@
-"""Run one safe live smoke test for both optional OpenAI paths."""
+"""Run one safe live smoke test for every optional OpenAI path."""
 
 from __future__ import annotations
 
@@ -10,7 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.llm import evaluate_defenses, generate_devils_advocate, parse_opinion
+from backend.llm import (
+    evaluate_defenses,
+    generate_devils_advocate,
+    parse_opinion,
+    suggest_criteria,
+)
 from backend.models import ChallengerQuestion, DefenderAnswer, EvidenceSnapshot
 
 
@@ -44,6 +49,15 @@ def main() -> None:
 
     options = ["A. AI 보안 도구", "B. 팀 의사결정 도구"]
     criteria = ["창의성", "구현 가능성", "발표 임팩트"]
+    suggestions = suggest_criteria(
+        "6시간 해커톤에서 어떤 아이디어를 만들까요?",
+        options,
+        criteria,
+        "팀원은 네 명이고 발표 직후 심사가 있습니다.",
+    )
+    if suggestions is None:
+        raise SystemExit("live criteria suggestion failed; inspect the sanitized backend log")
+
     opinion = parse_opinion(
         "A는 발표 임팩트가 크지만 구현 가능성이 걱정됩니다.",
         options,
@@ -94,6 +108,7 @@ def main() -> None:
             {
                 "status": "ok",
                 "model": os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
+                "criteria_suggestion_count": len(suggestions),
                 "parsed_preferred_option": opinion.preferred_option,
                 "parsed_positive_count": len(opinion.positive),
                 "parsed_concern_count": len(opinion.concerns),

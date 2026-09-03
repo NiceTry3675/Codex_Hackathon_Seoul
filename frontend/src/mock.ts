@@ -4,6 +4,8 @@ import type {
   ChallengerResolutionMessage,
   CreateRoomPayload,
   CreateRoomResponse,
+  CriteriaSuggestPayload,
+  CriteriaSuggestResponse,
   DebateState,
   DefenderMessage,
   DefenderTurnPayload,
@@ -23,12 +25,21 @@ let room: Room = {
   question: "6시간 해커톤에서 어떤 아이디어를 만들까요?",
   options: [optionA, optionB, optionC],
   criteria: ["창의성", "구현 가능성", "발표 임팩트"],
+  context: "",
   expected_members: 4,
   submission_mode: "anonymous",
   participant_names: [],
   submission_count: 3,
   is_complete: false,
 };
+
+const MOCK_CRITERIA_SUGGESTIONS = [
+  { name: "사용자 가치", why: "심사위원이 아니라 실제 사용자가 왜 쓰는지 설명할 수 있는지 봅니다." },
+  { name: "기술 리스크", why: "제한 시간 안에 막힐 수 있는 기술 요소가 얼마나 많은지 확인합니다." },
+  { name: "차별성", why: "비슷한 도구와 비교했을 때 한 문장으로 다른 점을 말할 수 있는지 봅니다." },
+  { name: "확장 가능성", why: "해커톤 이후에도 이어서 발전시킬 여지가 있는지 따집니다." },
+  { name: "구현 가능성", why: "네 명이 남은 시간 안에 실제로 만들 수 있는지 봅니다." },
+];
 
 export const MOCK_ANALYSIS: AnalysisResponse = {
   vote_share: {
@@ -145,6 +156,15 @@ function projectOpenAgenda(state: DebateState): string[] {
 }
 
 export const mockApi = {
+  async suggestCriteria(payload: CriteriaSuggestPayload): Promise<CriteriaSuggestResponse> {
+    await delay(700);
+    const existing = new Set(payload.existing_criteria.map((item) => item.replace(/\s+/g, "")));
+    return {
+      criteria: MOCK_CRITERIA_SUGGESTIONS.filter((item) => !existing.has(item.name.replace(/\s+/g, ""))),
+      source: "fallback",
+    };
+  },
+
   async createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {
     await delay();
     debate = createMockDebate();
@@ -153,6 +173,7 @@ export const mockApi = {
       question: payload.question,
       options: payload.options,
       criteria: payload.criteria,
+      context: payload.context ?? "",
       expected_members: payload.expected_members ?? 4,
       submission_mode: payload.submission_mode ?? "anonymous",
       participant_names: [],

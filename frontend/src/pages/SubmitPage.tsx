@@ -130,6 +130,12 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 </div>
               </div>
             </div>
+            {room.context && (
+              <details className="mt-5 rounded-2xl border border-black/10 bg-stone-50 px-4 py-3" open={room.context.length <= 200}>
+                <summary className="cursor-pointer text-sm font-bold text-stone-600">배경 맥락</summary>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-stone-600">{room.context}</p>
+              </details>
+            )}
             <p className="mt-5 text-sm leading-6 text-stone-500">
               {room.submission_mode === "named"
                 ? "입력한 이름은 제출 완료 여부에만 표시되고 Google 계정과 연결되지 않으며, 개인 점수와 의견은 공개하지 않습니다."

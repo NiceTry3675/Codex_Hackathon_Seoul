@@ -252,3 +252,83 @@ def test_evaluate_defenses_rejects_invented_numbers(monkeypatch):
     )
 
     assert llm.evaluate_defenses(snapshot, questions, answers) is None
+
+
+def test_suggest_criteria_returns_none_without_an_api_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = llm.suggest_criteria("어떤 안을 고를까요?", ["A", "B"], ["창의성"], "")
+
+    assert result is None
+
+
+def test_suggest_criteria_drops_duplicates_and_existing_names(monkeypatch):
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "criteria": [
+                {"name": "창의성", "why": "이미 있는 기준입니다."},
+                {"name": "실행 가능성", "why": "주어진 시간 안에 해낼 수 있는지 봅니다."},
+                {"name": "실행-가능성", "why": "같은 기준을 표기만 바꾼 것입니다."},
+                {"name": "리스크", "why": "실패했을 때 얼마나 크게 드러나는지 봅니다."},
+            ]
+        },
+    )
+
+    result = llm.suggest_criteria("어떤 안을 고를까요?", ["A", "B"], ["창의성"], "")
+
+    assert result is not None
+    assert [item.name for item in result] == ["실행 가능성", "리스크"]
+
+
+def test_suggest_criteria_rejects_numeric_or_non_korean_reasons(monkeypatch):
+    monkeypatch.setattr(
+        llm,
+        "_chat_json",
+        lambda *_, **__: {
+            "criteria": [
+                {"name": "비용", "why": "예산의 30%를 넘기면 안 됩니다."},
+                {"name": "Cost", "why": "purely english reason"},
+                {"name": "기대 효과", "why": "목표에 얼마나 기여하는지 봅니다."},
+            ]
+        },
+    )
+
+    result = llm.suggest_criteria("어떤 안을 고를까요?", [], [], "")
+
+    assert result is None
+
+
+def test_suggest_criteria_passes_context_and_a_larger_output_limit(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, payload, **kwargs):
+        captured["payload"] = payload
+        captured["kwargs"] = kwargs
+        return {
+            "criteria": [
+                {"name": "실행 가능성", "why": "주어진 시간 안에 해낼 수 있는지 봅니다."},
+                {"name": "리스크", "why": "실패했을 때 얼마나 크게 드러나는지 봅니다."},
+                {"name": "확장성", "why": "이후에 더 키울 수 있는지 봅니다."},
+            ]
+        }
+
+    monkeypatch.setattr(llm, "_chat_json", fake_chat_json)
+
+    result = llm.suggest_criteria("어떤 안을 고를까요?", ["A"], ["창의성"], "회의록 전문")
+
+    assert result is not None and len(result) == 3
+    assert captured["payload"]["context"] == "회의록 전문"
+    assert captured["payload"]["existing_criteria"] == ["창의성"]
+    assert captured["kwargs"]["max_completion_tokens"] == 900
+
+
+def test_fallback_criteria_skip_existing_names():
+    result = llm.fallback_criteria_suggestions(["리스크", "실행 가능성"])
+
+    names = [item.name for item in result]
+    assert "리스크" not in names
+    assert "실행 가능성" not in names
+    assert len(names) == 3
+    assert all(item.why for item in result)

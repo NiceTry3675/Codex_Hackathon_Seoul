@@ -7,7 +7,13 @@ import pytest
 
 import backend.main as main
 from backend.main import app, room_analysis_locks, rooms
-from backend.models import AuthUser, DefenseResolution, DevilsAdvocate, SubmissionCreate
+from backend.models import (
+    AuthUser,
+    CriterionSuggestion,
+    DefenseResolution,
+    DevilsAdvocate,
+    SubmissionCreate,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -114,6 +120,7 @@ def test_room_status_never_exposes_individual_submissions(client: TestClient):
         "question",
         "options",
         "criteria",
+        "context",
         "expected_members",
         "submission_mode",
         "participant_names",
@@ -445,3 +452,86 @@ def test_defender_provider_failure_closes_with_open_fallback(client: TestClient,
     assert response.json()["resolution_source"] == "fallback"
     verdicts = response.json()["messages"][-2:]
     assert all(message["resolution"] == "open" for message in verdicts)
+
+
+def test_room_context_is_optional_and_round_trips(client: TestClient):
+    created = client.post("/api/rooms", json=room_payload())
+    assert created.status_code == 201
+    assert created.json()["context"] == ""
+
+    payload = {**room_payload(), "context": "  지난 회의에서 예산이 줄었다는 이야기가 나왔습니다.  "}
+    created = client.post("/api/rooms", json=payload)
+    assert created.status_code == 201
+    code = created.json()["code"]
+    assert created.json()["context"] == payload["context"].strip()
+    assert client.get(f"/api/rooms/{code}").json()["context"] == payload["context"].strip()
+
+
+def test_room_context_length_is_bounded(client: TestClient):
+    payload = {**room_payload(), "context": "가" * 20_001}
+
+    response = client.post("/api/rooms", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_criteria_suggestions_use_the_live_provider(client: TestClient, monkeypatch):
+    captured = {}
+
+    def fake_suggest(question, options, existing, context):
+        captured.update(question=question, options=options, existing=existing, context=context)
+        return [
+            CriterionSuggestion(name="리스크", why="실패했을 때 얼마나 크게 드러나는지 봅니다."),
+            CriterionSuggestion(name="확장성", why="이후에 더 키울 수 있는지 봅니다."),
+        ]
+
+    monkeypatch.setattr(main, "suggest_criteria", fake_suggest)
+
+    response = client.post(
+        "/api/criteria/suggestions",
+        json={
+            "question": " 어떤 안을 선택할까요? ",
+            "options": ["A", "B"],
+            "existing_criteria": ["창의성"],
+            "context": "회의록 전문",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "live"
+    assert [item["name"] for item in body["criteria"]] == ["리스크", "확장성"]
+    assert captured == {
+        "question": "어떤 안을 선택할까요?",
+        "options": ["A", "B"],
+        "existing": ["창의성"],
+        "context": "회의록 전문",
+    }
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [lambda *_: None, lambda *_: (_ for _ in ()).throw(RuntimeError("boom"))],
+)
+def test_criteria_suggestions_fall_back_without_a_provider(client: TestClient, monkeypatch, provider):
+    monkeypatch.setattr(main, "suggest_criteria", provider)
+
+    response = client.post(
+        "/api/criteria/suggestions",
+        json={"question": "어떤 안을 선택할까요?", "existing_criteria": ["리스크"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "fallback"
+    names = [item["name"] for item in body["criteria"]]
+    assert names and "리스크" not in names
+
+
+def test_criteria_suggestions_validate_labels(client: TestClient):
+    response = client.post(
+        "/api/criteria/suggestions",
+        json={"question": "어떤 안을 선택할까요?", "existing_criteria": ["가치", "가치"]},
+    )
+
+    assert response.status_code == 422

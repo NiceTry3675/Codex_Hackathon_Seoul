@@ -39,14 +39,18 @@ from .debate import (
 )
 from .llm import (
     evaluate_defenses,
+    fallback_criteria_suggestions,
     fallback_devils_advocate,
     generate_devils_advocate,
     parse_opinion,
+    suggest_criteria,
 )
 from .models import (
     AnalysisResponse,
     AuthConfig,
     AuthState,
+    CriteriaSuggestRequest,
+    CriteriaSuggestResponse,
     DebateState,
     DefenderTurnRequest,
     GoogleCredential,
@@ -111,6 +115,7 @@ def _room_response(room: Room) -> RoomResponse:
         question=room.question,
         options=room.options,
         criteria=room.criteria,
+        context=room.context,
         expected_members=room.expected_members,
         submission_mode=room.submission_mode,
         participant_names=(
@@ -268,6 +273,31 @@ def logout(response: Response) -> LogoutResponse:
         path="/",
     )
     return LogoutResponse()
+
+
+@app.post("/api/criteria/suggestions", response_model=CriteriaSuggestResponse)
+def suggest_room_criteria(payload: CriteriaSuggestRequest) -> CriteriaSuggestResponse:
+    """Offer criteria the team may add; the team always makes the final pick."""
+
+    try:
+        suggestions = suggest_criteria(
+            payload.question,
+            payload.options,
+            payload.existing_criteria,
+            payload.context,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Unexpected criteria suggestion provider failure error=%s",
+            type(exc).__name__,
+        )
+        suggestions = None
+    if suggestions is None:
+        return CriteriaSuggestResponse(
+            criteria=fallback_criteria_suggestions(payload.existing_criteria),
+            source="fallback",
+        )
+    return CriteriaSuggestResponse(criteria=suggestions, source="live")
 
 
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)

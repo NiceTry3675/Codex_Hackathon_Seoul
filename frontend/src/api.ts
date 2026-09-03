@@ -5,6 +5,8 @@ import type {
   AuthState,
   CreateRoomPayload,
   CreateRoomResponse,
+  CriteriaSuggestPayload,
+  CriteriaSuggestResponse,
   DebateState,
   DefenderTurnPayload,
   Room,
@@ -75,6 +77,11 @@ export const api = {
 
   logout(): Promise<{ ok: true }> {
     return request("/api/auth/logout", { method: "POST" });
+  },
+
+  suggestCriteria(payload: CriteriaSuggestPayload): Promise<CriteriaSuggestResponse> {
+    if (USE_MOCK_API) return mockApi.suggestCriteria(payload);
+    return request("/api/criteria/suggestions", { method: "POST", body: JSON.stringify(payload) });
   },
 
   createRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {

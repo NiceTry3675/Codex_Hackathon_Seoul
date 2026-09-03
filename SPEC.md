@@ -54,6 +54,7 @@ Room:
   question: str            # "해커톤 아이디어 선택"
   options: list[str]       # ["A. AI 보안 도구", "B. 의사결정 도구", ...]
   criteria: list[str]      # ["창의성", "구현 가능성", "발표 임팩트"]
+  context: str             # 배경 맥락 (선택, 최대 20,000자; 한 줄 메모부터 회의록 전문까지)
   expected_members: int    # 기본 4, 대기 화면 완료 판단용
   submissions: list[Submission]
 
@@ -82,7 +83,8 @@ ParsedOpinion:              # GPT 출력 — 전부 범주형, 숫자 없음
 | POST | `/api/auth/google` | `credential` ID 토큰 검증 후 HttpOnly 세션 생성 |
 | GET | `/api/auth/me` | 로그인 상태와 검증된 사용자 프로필 |
 | POST | `/api/auth/logout` | 세션 쿠키 제거 |
-| POST | `/api/rooms` | 방 생성 (question, options, criteria) → room code |
+| POST | `/api/criteria/suggestions` | question·options·context 기반 평가 기준 제안 (LLM, 실패 시 범용 폴백) — 팀이 최종 선택 |
+| POST | `/api/rooms` | 방 생성 (question, options, criteria, context) → room code |
 | GET | `/api/rooms/{code}` | 방 정보 + 제출 수 |
 | POST | `/api/rooms/{code}/submit` | 의견 제출 (내부에서 GPT 구조화 호출) |
 | GET | `/api/rooms/{code}/analysis` | 전체 분석 결과 (아래 §5 출력 전부) |

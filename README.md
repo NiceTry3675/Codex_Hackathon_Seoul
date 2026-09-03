@@ -67,7 +67,8 @@ Devil's Advocate 공방 (증거 동결, append-only transcript, 실패 시 통�
 
 | Method | Path | 설명 |
 |---|---|---|
-| `POST` | `/api/rooms` | 방 생성 |
+| `POST` | `/api/criteria/suggestions` | 질문·선택지·배경 맥락으로 평가 기준 제안 (팀이 최종 선택) |
+| `POST` | `/api/rooms` | 방 생성 (배경 맥락 선택 입력) |
 | `GET` | `/api/rooms/{code}` | 방 정보와 제출 현황 |
 | `POST` | `/api/rooms/{code}/submit` | 익명/실명 의견 제출 |
 | `GET` | `/api/rooms/{code}/analysis` | 안정성·갈등·flip point 분석 (+ Challenger 질문 생성) |

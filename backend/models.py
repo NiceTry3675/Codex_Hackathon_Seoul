@@ -126,32 +126,83 @@ class DebateState(ApiModel):
     resolution_source: Literal["live", "fallback"] | None = None
 
 
+CONTEXT_MAX_LENGTH = 20_000
+
+
+def clean_labels(values: list[str]) -> list[str]:
+    """Shared option/criteria label rules: stripped, non-blank, short, unique."""
+
+    cleaned = [value.strip() for value in values]
+    if any(not value for value in cleaned):
+        raise ValueError("labels must not be blank")
+    if any(len(value) > 200 for value in cleaned):
+        raise ValueError("labels must contain at most 200 characters")
+    if len(set(cleaned)) != len(cleaned):
+        raise ValueError("labels must be unique")
+    return cleaned
+
+
+def clean_question(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("question must not be blank")
+    return value
+
+
 class RoomCreate(ApiModel):
     question: str = Field(min_length=1, max_length=500)
     options: list[str] = Field(min_length=2, max_length=10)
     criteria: list[str] = Field(min_length=1, max_length=10)
+    context: str = Field(default="", max_length=CONTEXT_MAX_LENGTH)
     expected_members: int = Field(default=4, ge=1, le=100)
     submission_mode: SubmissionMode = "anonymous"
 
     @field_validator("question")
     @classmethod
     def strip_question(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("question must not be blank")
-        return value
+        return clean_question(value)
+
+    @field_validator("context")
+    @classmethod
+    def strip_context(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("options", "criteria")
     @classmethod
     def validate_labels(cls, values: list[str]) -> list[str]:
-        cleaned = [value.strip() for value in values]
-        if any(not value for value in cleaned):
-            raise ValueError("labels must not be blank")
-        if any(len(value) > 200 for value in cleaned):
-            raise ValueError("labels must contain at most 200 characters")
-        if len(set(cleaned)) != len(cleaned):
-            raise ValueError("labels must be unique")
-        return cleaned
+        return clean_labels(values)
+
+
+class CriterionSuggestion(ApiModel):
+    name: str = Field(min_length=1, max_length=200)
+    why: str = Field(min_length=1, max_length=500)
+
+
+class CriteriaSuggestRequest(ApiModel):
+    question: str = Field(min_length=1, max_length=500)
+    options: list[str] = Field(default_factory=list, max_length=10)
+    existing_criteria: list[str] = Field(default_factory=list, max_length=10)
+    context: str = Field(default="", max_length=CONTEXT_MAX_LENGTH)
+
+    @field_validator("question")
+    @classmethod
+    def strip_question(cls, value: str) -> str:
+        return clean_question(value)
+
+    @field_validator("context")
+    @classmethod
+    def strip_context(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("options", "existing_criteria")
+    @classmethod
+    def validate_labels(cls, values: list[str]) -> list[str]:
+        return clean_labels(values)
+
+
+class CriteriaSuggestResponse(ApiModel):
+    criteria: list[CriterionSuggestion]
+    source: Literal["live", "fallback"]
 
 
 class Room(ApiModel):
@@ -159,6 +210,7 @@ class Room(ApiModel):
     question: str
     options: list[str]
     criteria: list[str]
+    context: str = ""
     expected_members: int = 4
     submission_mode: SubmissionMode = "anonymous"
     submissions: list[Submission] = Field(default_factory=list)
@@ -173,6 +225,7 @@ class RoomResponse(ApiModel):
     question: str
     options: list[str]
     criteria: list[str]
+    context: str = ""
     expected_members: int
     submission_mode: SubmissionMode
     participant_names: list[str] = Field(default_factory=list)

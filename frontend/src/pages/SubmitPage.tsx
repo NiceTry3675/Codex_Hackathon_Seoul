@@ -122,8 +122,14 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight">{room.question}</h2>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => void copyCode()} className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold">
-                  {copied ? "복사됨" : `코드 ${room.code} 복사`}
+                <button
+                  type="button"
+                  onClick={() => void copyCode()}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold"
+                  aria-label={`방 코드 ${room.code} 복사`}
+                >
+                  <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+                  <span aria-live="polite">{copied ? "복사됐어요" : `코드 ${room.code} 복사`}</span>
                 </button>
                 <div className="rounded-2xl bg-moss-50 px-4 py-3 text-sm font-semibold text-moss-700">
                   <span aria-hidden="true">◉</span> {room.submission_mode === "named" ? "실명 제출" : "익명 제출"}

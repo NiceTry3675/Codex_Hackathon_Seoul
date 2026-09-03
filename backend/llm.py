@@ -169,7 +169,7 @@ FALLBACK_CRITERIA: list[tuple[str, str]] = [
     ("실행 가능성", "지금 가진 인력과 시간으로 실제로 해낼 수 있는지 봅니다."),
     ("비용과 자원", "선택에 들어가는 돈, 시간, 사람의 부담을 비교합니다."),
     ("기대 효과", "목표에 얼마나 직접적으로 기여하는지 확인합니다."),
-    ("리스크", "잘못됐을 때 얼마나 크게, 얼마나 빨리 문제가 드러나는지 봅니다."),
+    ("리스크 대응력", "문제가 생겨도 피해를 줄이고 빠르게 대응할 수 있는지 봅니다."),
     ("되돌릴 수 있는가", "나중에 방향을 바꾸는 것이 얼마나 쉬운지 따집니다."),
 ]
 
@@ -467,6 +467,10 @@ def fallback_criteria_suggestions(existing_criteria: list[str]) -> list[Criterio
     """Generic, deterministic criteria the team can still pick from without an LLM."""
 
     seen = {_normalize_question(item) for item in existing_criteria}
+    # The positive-form replacement remains semantically equivalent to the old
+    # negative-form label, so do not recommend both in one room.
+    if _normalize_question("리스크") in seen:
+        seen.add(_normalize_question("리스크 대응력"))
     return [
         CriterionSuggestion(name=name, why=why)
         for name, why in FALLBACK_CRITERIA

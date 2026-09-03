@@ -111,7 +111,9 @@ function WaitingPage({ room, loading, onRoomChange, onAnalyze }: WaitingPageProp
             type="button"
             onClick={() => void copyCode()}
             className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-sm font-bold tracking-[0.18em] text-ink transition hover:border-moss-500"
+            aria-label={`방 코드 ${room.code} 복사`}
           >
+            <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
             {room.code}
             <span className="font-sans text-xs font-semibold tracking-normal text-moss-700" aria-live="polite">
               {copied ? "복사됨 ✓" : "복사"}

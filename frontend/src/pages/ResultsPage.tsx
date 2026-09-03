@@ -15,6 +15,14 @@ const agreementStyle: Record<Agreement, string> = {
   LOW: "bg-red-100 text-red-700",
 };
 
+const agreementLabel: Record<Agreement, string> = {
+  HIGH: "의견이 비슷해요",
+  MID: "일부 차이가 있어요",
+  LOW: "의견 차이가 커요",
+};
+
+const NEARBY_FLIP_THRESHOLD = 0.15;
+
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -91,13 +99,19 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
   const winnerChanged = Boolean(liveWinner && liveWinner !== analysis.current_winner);
   const voteEntries = Object.entries(analysis.vote_share).sort(([, left], [, right]) => right - left);
   const stabilityEntries = Object.entries(analysis.stability).sort(([, left], [, right]) => right - left);
+  const nearbyFlipPoints = analysis.flip_points.filter(
+    (item) => item.type === "member" || Math.abs(item.to - item.from) <= NEARBY_FLIP_THRESHOLD,
+  );
+  const theoreticalFlipPoints = analysis.flip_points.filter(
+    (item) => item.type === "weight" && Math.abs(item.to - item.from) > NEARBY_FLIP_THRESHOLD,
+  );
 
   return (
     <div className="pb-10">
       <section className="border-b border-black/5 bg-sand">
         <div className="mx-auto max-w-5xl px-4 py-14 text-center sm:px-6 sm:py-20">
           <p className="eyebrow">Step 03 · Decision stress test</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">합의보다, 더 나은 선택.</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">현재 결과는 얼마나 견고할까요?</h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-stone-600">
             현재 1위는 <strong className="text-ink">{analysis.current_winner}</strong>입니다. 하지만 조건이 조금만 달라져도 같은 결과일까요?
           </p>
@@ -129,13 +143,13 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               </div>
             ))}
           </div>
-          <p className="mt-6 text-sm leading-6 text-stone-500">득표는 선호를 보여주지만, 그 결정이 조건 변화에도 유지되는지는 알려주지 않습니다.</p>
+          <p className="mt-6 text-sm text-stone-500">득표와 조건 변화에 대한 견고함은 서로 다를 수 있습니다.</p>
         </section>
 
         <section id="stability" className="card scroll-mt-28">
           <p className="eyebrow">02 · Decision stability</p>
           <h2 className="section-title">가중치가 흔들리면 결과도 흔들릴까요?</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">팀 가중치 주변을 반복해서 변화시켜, 각 옵션이 1위를 유지한 비율입니다.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">팀의 기준 비중을 조금씩 바꿨을 때 각 선택지가 1위를 유지한 비율입니다.</p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {stabilityEntries.map(([option, value]) => {
               const robust = option === analysis.robust_choice;
@@ -151,7 +165,10 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               );
             })}
           </div>
-          <div className="mt-6 rounded-2xl bg-stone-50 px-4 py-3 text-xs leading-5 text-stone-500">이 수치는 4~6명 규모의 서술적 민감도 분석이며 통계적 유의성을 뜻하지 않습니다.</div>
+          <details className="mt-6 rounded-2xl bg-stone-50 px-4 py-3 text-xs leading-5 text-stone-500">
+            <summary className="cursor-pointer font-semibold">계산 방법 보기</summary>
+            <p className="mt-2">팀 평균 주변의 여러 가중치 조합을 반복 계산한 설명용 지표이며, 통계적 유의성을 뜻하지 않습니다.</p>
+          </details>
         </section>
 
         <section id="conflict" className="card scroll-mt-28 border-l-4 border-l-coral">
@@ -171,28 +188,32 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               const agreement = analysis.score_agreement[analysis.current_winner]?.[criterion] ?? "MID";
               return (
                 <span key={criterion} className="rounded-full border border-black/5 bg-white px-3 py-2 text-xs font-semibold">
-                  {criterion} <span className={`ml-1 rounded-full px-2 py-0.5 ${agreementStyle[agreement]}`}>{agreement}</span>
+                  {criterion} <span className={`ml-1 rounded-full px-2 py-0.5 ${agreementStyle[agreement]}`}>{agreementLabel[agreement]}</span>
                 </span>
               );
             })}
           </div>
+          <p className="mt-3 text-xs text-stone-500">이 표시는 기준의 중요도가 아니라, 참여자들의 평가가 얼마나 비슷한지를 뜻합니다.</p>
         </section>
 
         <section id="flip" className="card scroll-mt-28">
           <p className="eyebrow">04 · Flip point</p>
-          <h2 className="section-title">결과는 이만큼만 변해도 뒤집힙니다.</h2>
+          <h2 className="section-title">가까운 뒤집힘 조건을 확인하세요.</h2>
+          {nearbyFlipPoints.length === 0 && (
+            <p className="mt-5 rounded-2xl bg-moss-50 p-4 text-sm font-semibold text-moss-800">현재 결과는 가중치 변화에 비교적 견고합니다.</p>
+          )}
           <div className="mt-7 grid gap-4 md:grid-cols-2">
-            {analysis.flip_points.map((flipPoint, index) => (
+            {nearbyFlipPoints.map((flipPoint, index) => (
               <div key={index} className="rounded-3xl bg-ink p-6 text-white">
                 {flipPoint.type === "weight" ? (
                   <>
                     <span className="text-xs font-bold uppercase tracking-[0.18em] text-moss-100">Weight shift</span>
                     <div className="mt-5 flex items-baseline gap-3">
-                      <strong className="text-4xl tracking-tight">+{Math.round((flipPoint.to - flipPoint.from) * 100)}%p</strong>
+                      <strong className="text-4xl tracking-tight">{Math.round((flipPoint.to - flipPoint.from) * 100)}%p</strong>
                       <span className="text-sm text-white/60">{flipPoint.criterion}</span>
                     </div>
                     <p className="mt-4 text-sm leading-6 text-white/75">
-                      {percent(flipPoint.from)}에서 {percent(flipPoint.to)}로 오르면 <strong className="text-white">{flipPoint.new_winner}</strong>가 1위가 됩니다.
+                      {percent(flipPoint.from)}에서 {percent(flipPoint.to)}로 바뀌면 <strong className="text-white">{flipPoint.new_winner}</strong>가 1위가 됩니다.
                     </p>
                   </>
                 ) : (
@@ -205,6 +226,18 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
               </div>
             ))}
           </div>
+          {theoreticalFlipPoints.length > 0 && (
+            <details className="mt-5 rounded-2xl border border-black/10 bg-stone-50 p-4 text-sm text-stone-600">
+              <summary className="cursor-pointer font-semibold">이론적 뒤집힘 포인트 {theoreticalFlipPoints.length}개 보기</summary>
+              <ul className="mt-3 space-y-2">
+                {theoreticalFlipPoints.map((item) => item.type === "weight" && (
+                  <li key={`${item.criterion}-${item.to}`}>
+                    {item.criterion}: {percent(item.from)} → {percent(item.to)}일 때 {item.new_winner} 1위
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
 
         <section className="overflow-hidden rounded-3xl bg-moss-700 p-6 text-white shadow-card sm:p-9">
@@ -241,7 +274,7 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
                 {room.criteria.map((criterion) => (
                   <label key={criterion} className="block">
                     <span className="flex items-center justify-between text-sm font-semibold">
-                      <span>{criterion} <span className={`ml-1 rounded-full px-2 py-1 text-[10px] ${agreementStyle[analysis.weight_agreement[criterion] ?? "MID"]}`}>{analysis.weight_agreement[criterion] ?? "MID"}</span></span>
+                      <span>{criterion} <span className={`ml-1 rounded-full px-2 py-1 text-[10px] ${agreementStyle[analysis.weight_agreement[criterion] ?? "MID"]}`}>{agreementLabel[analysis.weight_agreement[criterion] ?? "MID"]}</span></span>
                       <output>{Math.round((normalizedWeights[criterion] ?? 0) * 100)}%</output>
                     </span>
                     <input
@@ -303,10 +336,6 @@ function ResultsPage({ analysis, room, onRefreshAnalysis }: ResultsPageProps) {
           </ol>
         </section>
 
-        <div className="py-5 text-center">
-          <p className="text-2xl font-semibold tracking-[-0.04em]">싱큐 · 합의보다, 더 나은 선택.</p>
-          <p className="mt-2 text-sm text-stone-500">싱큐는 결정을 추천하지 않습니다. 결정의 견고성을 보여줄 뿐입니다.</p>
-        </div>
       </div>
     </div>
   );

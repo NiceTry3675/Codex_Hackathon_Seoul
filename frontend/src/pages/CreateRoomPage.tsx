@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { api } from "../api";
 import { CONTEXT_MAX_LENGTH } from "../types";
 import type { CreateRoomPayload, CriteriaSuggestResponse } from "../types";
@@ -9,9 +10,8 @@ interface CreateRoomPageProps {
   onCreate: (payload: CreateRoomPayload) => Promise<void>;
 }
 
-const DEMO_QUESTION = "6시간 해커톤에서 어떤 아이디어를 만들까요?";
-const DEMO_OPTIONS = "A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구";
-const DEMO_CRITERIA = "창의성\n구현 가능성\n발표 임팩트";
+const INITIAL_OPTIONS = ["", ""];
+const INITIAL_CRITERIA = [""];
 
 const submissionModes = [
   {
@@ -26,11 +26,7 @@ const submissionModes = [
   },
 ] as const;
 
-const lines = (value: string) =>
-  value
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
+const cleanItems = (values: string[]) => values.map((item) => item.trim()).filter(Boolean);
 
 /** 백엔드 RoomCreate와 같은 규칙: 최대 10개, 200자 이내, 중복 금지. */
 function labelError(items: string[], name: string): string | undefined {
@@ -44,11 +40,11 @@ const fieldClass = "w-full rounded-2xl border border-black/10 bg-stone-50 px-4 p
 const errorClass = "mt-2 block text-xs font-semibold text-red-700";
 
 function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPageProps) {
-  const [question, setQuestion] = useState(DEMO_QUESTION);
+  const [question, setQuestion] = useState("");
   const [context, setContext] = useState("");
   const [contextNotice, setContextNotice] = useState("");
-  const [options, setOptions] = useState(DEMO_OPTIONS);
-  const [criteria, setCriteria] = useState(DEMO_CRITERIA);
+  const [options, setOptions] = useState<string[]>(INITIAL_OPTIONS);
+  const [criteria, setCriteria] = useState<string[]>(INITIAL_CRITERIA);
   const [expectedMembers, setExpectedMembers] = useState(4);
   const [submissionMode, setSubmissionMode] = useState<"anonymous" | "named">("anonymous");
   const [suggesting, setSuggesting] = useState(false);
@@ -62,8 +58,9 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     }
   }, [isAuthenticated]);
 
-  const criteriaList = lines(criteria);
-  const optionError = labelError(lines(options), "선택지");
+  const criteriaList = cleanItems(criteria);
+  const optionList = cleanItems(options);
+  const optionError = labelError(optionList, "선택지");
   const criteriaError = labelError(criteriaList, "평가 기준");
   const criteriaFull = criteriaList.length >= 10;
 
@@ -95,7 +92,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
       setSuggestions(
         await api.suggestCriteria({
           question: question.trim(),
-          options: lines(options),
+          options: optionList,
           existing_criteria: criteriaList,
           context: context.trim(),
         }),
@@ -109,8 +106,26 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
 
   const addCriterion = (name: string) => {
     if (criteriaList.includes(name) || criteriaFull) return;
-    setCriteria((current) => (current.trim() ? `${current.trimEnd()}\n${name}` : name));
+    setCriteria((current) => {
+      const next = current.length === 1 && !current[0].trim() ? [name] : [...current, name];
+      return next.slice(0, 10);
+    });
   };
+
+  const updateItem = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    index: number,
+    value: string,
+  ) => setter((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
+
+  const addItem = (setter: Dispatch<SetStateAction<string[]>>) =>
+    setter((current) => (current.length < 10 ? [...current, ""] : current));
+
+  const removeItem = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    index: number,
+    minimum: number,
+  ) => setter((current) => (current.length > minimum ? current.filter((_, itemIndex) => itemIndex !== index) : current));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -118,7 +133,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     if (optionError || criteriaError) return;
     void onCreate({
       question: question.trim(),
-      options: lines(options),
+      options: optionList,
       criteria: criteriaList,
       context: context.trim(),
       expected_members: expectedMembers,
@@ -188,29 +203,72 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           </div>
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-stone-600">선택지 · 한 줄에 하나</span>
-            <textarea
-              className={`${fieldClass} min-h-36`}
-              value={options}
-              onChange={(event) => setOptions(event.target.value)}
-              placeholder={"예: A. AI 보안 도구\nB. 팀 의사결정 도구\nC. 회의 요약 도구"}
-              required
-            />
+        <div className="grid gap-6 sm:grid-cols-2">
+          <fieldset>
+            <legend className="mb-2 text-sm font-bold text-stone-600">선택지</legend>
+            <div className="space-y-2">
+              {options.map((option, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    className={fieldClass}
+                    value={option}
+                    onChange={(event) => updateItem(setOptions, index, event.target.value)}
+                    placeholder={index === 0 ? "예: AI 보안 도구" : index === 1 ? "예: 팀 의사결정 도구" : "선택지를 입력하세요"}
+                    aria-label={`선택지 ${index + 1}`}
+                    maxLength={200}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
+                    onClick={() => removeItem(setOptions, index, 2)}
+                    disabled={options.length <= 2}
+                    aria-label={`선택지 ${index + 1} 삭제`}
+                    title="선택지 삭제"
+                  >
+                    −
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setOptions)} disabled={options.length >= 10}>
+              <span aria-hidden="true">＋</span> 선택지 추가
+            </button>
             {optionError && <span className={errorClass}>{optionError}</span>}
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-stone-600">평가 기준 · 한 줄에 하나</span>
-            <textarea
-              className={`${fieldClass} min-h-36`}
-              value={criteria}
-              onChange={(event) => setCriteria(event.target.value)}
-              placeholder={"예: 창의성\n구현 가능성\n발표 임팩트"}
-              required
-            />
+          </fieldset>
+          <fieldset>
+            <legend className="mb-2 text-sm font-bold text-stone-600">평가 기준</legend>
+            <div className="space-y-2">
+              {criteria.map((criterion, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    className={fieldClass}
+                    value={criterion}
+                    onChange={(event) => updateItem(setCriteria, index, event.target.value)}
+                    placeholder={index === 0 ? "예: 심리적 편안함" : "긍정적인 방향의 기준을 입력하세요"}
+                    aria-label={`평가 기준 ${index + 1}`}
+                    maxLength={200}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
+                    onClick={() => removeItem(setCriteria, index, 1)}
+                    disabled={criteria.length <= 1}
+                    aria-label={`평가 기준 ${index + 1} 삭제`}
+                    title="평가 기준 삭제"
+                  >
+                    −
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setCriteria)} disabled={criteria.length >= 10}>
+              <span aria-hidden="true">＋</span> 평가 기준 추가
+            </button>
+            <p className="mt-2 text-xs leading-5 text-stone-500">모든 기준은 1점이 부정적, 5점이 긍정적이 되도록 적어 주세요.</p>
             {criteriaError && <span className={errorClass}>{criteriaError}</span>}
-          </label>
+          </fieldset>
         </div>
 
         <section className="rounded-2xl border border-dashed border-moss-500/40 bg-moss-50/60 p-4">
@@ -319,7 +377,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           className="primary-button w-full"
           disabled={
             loading ||
-            lines(options).length < 2 ||
+            optionList.length < 2 ||
             criteriaList.length < 1 ||
             Boolean(optionError || criteriaError) ||
             (submissionMode === "named" && !isAuthenticated)

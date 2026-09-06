@@ -14,6 +14,10 @@
 - `consensus-rooms`는 새 빈 테이블로 생성했다. 이전 방 데이터의 복구는 수행하지 않았다. On-demand와 `expires_at` TTL을 설정했다.
 - `.env`의 Google Client ID를 적용했다. Google OAuth 승인된 JavaScript 원본에는 새 HTTPS URL 등록 여부를 별도로 확인해야 한다.
 - ECR 런타임 이미지 검사에서 OS 패키지 Critical 6건, High 11건, Medium 3건, Low 1건이 보고되었다. Critical 항목은 Perl/glibc 패키지에 해당한다. 이 복구에서 OS 패키지 취약점 수정이나 애플리케이션 악용 가능성 평가는 수행하지 않았다.
+- 최종 검증: App Runner `RUNNING` / 생성 작업 `SUCCEEDED`(09:58 KST), 서버 키와 로컬 `.env` 일치, 모델 `gpt-6-astra`, HTTPS health 200, LIVE API 번들, 기준 추천 `source=live`를 확인했다.
+- 검증 방 `5DOZEO`: 4개 제출, current A / robust B, stability 47.7% / 52.3%, 구현 가능성 1%p flip 계약 및 DynamoDB 저장을 확인했다. 검증 방은 TTL에 따라 만료된다.
+- 로컬 테스트: backend 116개, frontend 5개, production build, in-process E2E 통과. Docker WSL integration이 꺼져 있어 이미지 빌드는 GitHub Actions에서 수행했다. 전체 OpenAI smoke 중 한 호출은 429로 실패했지만 이후 Astra 단독 호출과 배포 URL의 live 호출은 성공했다.
+- 로컬 DNS의 생성 전 NXDOMAIN 캐시 때문에 공개 DNS의 A 레코드로 주소를 해석해 실서비스를 검증했다. 원래 서비스 호스트명과 HTTPS 인증서 검증은 유지했다.
 - 아래 Phase 설명은 최초 배포 계획의 기록이며, 현재 이미지 운영 방식은 Phase 3의 자동 배포를 따른다.
 
 ## 1. 현재 상태와 배포 차단 요인

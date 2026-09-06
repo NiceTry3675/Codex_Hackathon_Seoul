@@ -179,7 +179,7 @@ DecisionRecord:
    - 결과 화면에서 Discussion Agenda와 한 블록으로 표시.
 
 - 실패/타임아웃 시 해당 필드 없이 진행 (GPT는 필수 경로가 아님).
-- 모델: `gpt-5.6-sol`. 모델 ID는 환경변수 `OPENAI_MODEL`, 키는 `OPENAI_API_KEY`로 주입.
+- 모델: `gpt-6-astra`. 모델 ID는 환경변수 `OPENAI_MODEL`, 키는 `OPENAI_API_KEY`로 주입.
 - (옵션, 시간 남으면) 페르소나 토론 시뮬레이션: 각 익명 제출을 에이전트로 만들어
   토론시키는 확장. 출력 비결정성 때문에 라이브 데모에는 넣지 말 것.
 

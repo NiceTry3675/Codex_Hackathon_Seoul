@@ -265,7 +265,7 @@ def _chat_json(
         return None
 
     body = {
-        "model": os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
+        "model": os.getenv("OPENAI_MODEL", "gpt-6-astra"),
         "reasoning_effort": "medium",
         "verbosity": "low",
         "response_format": {

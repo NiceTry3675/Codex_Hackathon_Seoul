@@ -41,7 +41,7 @@
 | room 저장소 | DynamoDB `consensus-rooms`, on-demand | App Runner 교체·재시작 후에도 방과 제출을 유지 |
 | 상태 확인 | HTTP `/api/health`, port `8080` | 애플리케이션 준비 상태를 직접 확인 |
 | OpenAI 키 | App Runner 평문 runtime environment variable | 해커톤 속도를 위해 사용자가 확정; 저장소·이미지·CLI 로그에는 넣지 않음 |
-| OpenAI 모델 | `gpt-5.6-sol` | 최종 데모용 고정 모델 ID |
+| OpenAI 모델 | `gpt-6-astra` | 기본 모델 ID |
 | 배포 권한 | 현재 AWS root CLI 세션 | 사용자가 확정한 단기 해커톤 운영 방식 |
 | EC2 폴백 | `EC2_FALLBACK.md` runbook만 준비 | 인스턴스는 App Runner 실패 시에만 생성 |
 
@@ -88,7 +88,7 @@ N. Virginia의 같은 가정은 약 `$0.15`라서 단기 데모에서는 지연�
    - managed policy: `AWSAppRunnerServicePolicyForECRAccess`
 4. `.env`에서 읽은 값을 출력하지 않고 App Runner plain-text runtime environment variable로 주입한다.
    - `OPENAI_API_KEY`: 실제 키
-   - `OPENAI_MODEL`: `gpt-5.6-sol`
+   - `OPENAI_MODEL`: `gpt-6-astra`
    - `OPENAI_TIMEOUT_SECONDS`: `60`
    - `CONSENSUS_TABLE_NAME`: `consensus-rooms`
    - `GOOGLE_CLIENT_ID`: Google OAuth 웹 Client ID
@@ -184,7 +184,7 @@ DynamoDB table, ECR images/repository, autoscaling configuration, 전용 ECR acc
 
 1. 배포 리전: Tokyo(`ap-northeast-1`).
 2. 배포 주체: 현재 AWS root CLI 세션.
-3. OpenAI: `gpt-5.6-sol`, App Runner 평문 환경변수.
+3. OpenAI: `gpt-6-astra`, App Runner 평문 환경변수.
 4. EC2: runbook만 사전 준비.
 5. 서비스 유지: 발표 후 24시간.
 6. OpenAI 키: 발표 후에도 폐기·교체하지 않음.

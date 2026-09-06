@@ -107,7 +107,7 @@ def main() -> None:
         json.dumps(
             {
                 "status": "ok",
-                "model": os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
+                "model": os.getenv("OPENAI_MODEL", "gpt-6-astra"),
                 "criteria_suggestion_count": len(suggestions),
                 "parsed_preferred_option": opinion.preferred_option,
                 "parsed_positive_count": len(opinion.positive),

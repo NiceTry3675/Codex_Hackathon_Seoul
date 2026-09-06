@@ -1,7 +1,20 @@
 # Consensus AWS Deployment Plan — Insight-D
 
-> 상태 기준: 2026-08-16. App Runner, ECR, DynamoDB와 전용 IAM 역할이 생성되어 운영 중이다.
+> 복구 기준: 2026-09-06. 삭제된 App Runner, ECR, DynamoDB와 전용 IAM 역할을 재생성했다.
 > 목표: 단일 Docker 이미지 → Private ECR → AWS App Runner, 인스턴스 1개 고정.
+
+## 2026-09-06 복구 기록
+
+- 새 서비스 URL: https://9rvtpygxvv.ap-northeast-1.awsapprunner.com
+- 서비스 ARN: `arn:aws:apprunner:ap-northeast-1:645674817582:service/consensus-demo/8e3b6ec3bfaa43a6a81616c9b9883a27`
+- 이미지 빌드 커밋: `485570b6684ae89446864eacabbfa15f7f9053bb`.
+- `.env`의 OpenAI 키를 메모리에서 읽어 runtime 환경변수로 적용하고 모델은 `gpt-6-astra`로 설정했다. 키는 커밋·이미지·명령행 인자·출력에 포함하지 않았다.
+- Tokyo, 1 vCPU / 2 GB, 8080, HTTP `/api/health`, min/max 1을 복원했다.
+- ECR은 `deploy`만 mutable로 설정하고 GitHub OIDC 배포 역할 및 자동 배포를 복원했다.
+- `consensus-rooms`는 새 빈 테이블로 생성했다. 이전 방 데이터의 복구는 수행하지 않았다. On-demand와 `expires_at` TTL을 설정했다.
+- `.env`의 Google Client ID를 적용했다. Google OAuth 승인된 JavaScript 원본에는 새 HTTPS URL 등록 여부를 별도로 확인해야 한다.
+- ECR 런타임 이미지 검사에서 OS 패키지 Critical 6건, High 11건, Medium 3건, Low 1건이 보고되었다. Critical 항목은 Perl/glibc 패키지에 해당한다. 이 복구에서 OS 패키지 취약점 수정이나 애플리케이션 악용 가능성 평가는 수행하지 않았다.
+- 아래 Phase 설명은 최초 배포 계획의 기록이며, 현재 이미지 운영 방식은 Phase 3의 자동 배포를 따른다.
 
 ## 1. 현재 상태와 배포 차단 요인
 

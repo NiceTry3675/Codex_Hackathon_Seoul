@@ -13,9 +13,9 @@
 
 | | URL |
 |---|---|
-| **서비스** | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com> |
-| API 문서 (Swagger) | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com/docs> |
-| 상태 확인 | <https://dmyeqxcpyr.ap-northeast-1.awsapprunner.com/api/health> |
+| **서비스** | <https://9rvtpygxvv.ap-northeast-1.awsapprunner.com> |
+| API 문서 (Swagger) | <https://9rvtpygxvv.ap-northeast-1.awsapprunner.com/docs> |
+| 상태 확인 | <https://9rvtpygxvv.ap-northeast-1.awsapprunner.com/api/health> |
 
 AWS App Runner(도쿄 리전) 단일 컨테이너로 배포되어 있으며, `main` 브랜치 push 시 GitHub Actions가 ECR 이미지 빌드와 배포를 자동 수행합니다.
 

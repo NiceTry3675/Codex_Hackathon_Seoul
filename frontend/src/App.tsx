@@ -18,10 +18,10 @@ import type {
 type Stage = "create" | "submit" | "waiting" | "results";
 
 const stages: Array<{ id: Stage; label: string }> = [
-  { id: "create", label: "방 만들기" },
-  { id: "submit", label: "의견 입력" },
+  { id: "create", label: "결정 만들기" },
+  { id: "submit", label: "평가 참여" },
   { id: "waiting", label: "제출 현황" },
-  { id: "results", label: "분석 결과" },
+  { id: "results", label: "결과 확인" },
 ];
 
 function App() {
@@ -197,7 +197,7 @@ function App() {
           <div className="order-3 flex w-full min-w-28 justify-end sm:order-none sm:w-auto">
             {USE_MOCK_API ? (
               <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800">
-                MOCK MODE
+                예시 데이터
               </span>
             ) : authState.authenticated && authState.user ? (
               <div className="flex items-center gap-2 rounded-full border border-black/5 bg-white py-1 pl-2 pr-1 shadow-sm">
@@ -224,11 +224,11 @@ function App() {
                 clientId={authConfig.client_id}
                 disabled={authBusy}
                 onCredential={loginWithGoogle}
-                onLoadError={() => setAuthError("Google 로그인 모듈을 불러오지 못했습니다.")}
+                onLoadError={() => setAuthError("Google 로그인을 불러오지 못했습니다.")}
               />
             ) : (
               <span className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-500">
-                {authConfig ? "Google 로그인 미설정" : "LIVE API"}
+                {authConfig ? "로그인 없이 이용 가능" : "연결 확인 중"}
               </span>
             )}
           </div>
@@ -275,15 +275,15 @@ function App() {
           <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 text-center">
             <div>
               <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-moss-100 border-t-moss-600" />
-              <p className="mt-4 font-semibold">결정의 안정성을 계산하고 있어요.</p>
-              <p className="mt-1 text-sm text-stone-500">숫자는 통계 엔진이, 쟁점 정리는 AI가 맡습니다.</p>
+              <p className="mt-4 font-semibold">팀의 평가를 계산하고 있어요.</p>
+              <p className="mt-1 text-sm text-stone-500">기준의 중요도를 바꿨을 때 결과가 달라지는지 확인합니다.</p>
             </div>
           </div>
         )}
       </main>
 
       <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-stone-500 sm:px-6">
-        싱큐는 결정을 대신하지 않습니다. 결정이 얼마나 견고한지 보여줍니다.
+        싱큐는 평가가 갈린 기준과 결과가 바뀌는 조건을 보여줍니다. 최종 결정은 팀이 내립니다.
       </footer>
     </div>
   );

@@ -22,7 +22,7 @@ const submissionModes = [
   {
     value: "anonymous",
     label: "익명 제출",
-    description: "이름 없이 판단 내용만 수집합니다.",
+    description: "이름을 입력하지 않고 제출합니다.",
   },
   {
     value: "named",
@@ -35,8 +35,8 @@ const cleanItems = (values: string[]) => values.map((item) => item.trim()).filte
 
 /** 백엔드 RoomCreate와 같은 규칙: 최대 10개, 200자 이내, 중복 금지. */
 function labelError(items: string[], name: string): string | undefined {
-  if (items.length > 10) return `${name}은(는) 최대 10개까지 입력할 수 있어요.`;
-  if (items.some((item) => item.length > 200)) return `${name}은(는) 항목당 200자 이내로 입력해 주세요.`;
+  if (items.length > 10) return `${name}: 최대 10개까지 입력할 수 있어요.`;
+  if (items.some((item) => item.length > 200)) return `${name}: 항목당 200자 이내로 입력해 주세요.`;
   if (new Set(items).size !== items.length) return `${name}에 같은 항목이 두 번 있어요.`;
   return undefined;
 }
@@ -62,7 +62,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   const [chatMessages, setChatMessages] = useState<AssistantMessage[]>([
     {
       role: "assistant",
-      content: "결정 질문, 선택지, 평가 기준을 함께 다듬어 드릴게요. 막히는 부분을 편하게 물어보세요.",
+      content: "질문, 선택지, 판단 기준 중 다듬고 싶은 부분을 알려 주세요.",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
@@ -79,7 +79,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   const criteriaList = cleanItems(criteria);
   const optionList = cleanItems(options);
   const optionError = labelError(optionList, "선택지");
-  const criteriaError = labelError(criteriaList, "평가 기준");
+  const criteriaError = labelError(criteriaList, "판단 기준");
   const criteriaFull = criteriaList.length >= 10;
   const optionsFull = optionList.length >= 10;
 
@@ -97,10 +97,10 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
     const merged = context.trim() ? `${context.trimEnd()}\n\n${text}` : text;
     if (merged.length > CONTEXT_MAX_LENGTH) {
       setContext(merged.slice(0, CONTEXT_MAX_LENGTH));
-      setContextNotice(`${file.name}을(를) 불러왔지만 ${CONTEXT_MAX_LENGTH.toLocaleString()}자 이후는 잘렸어요.`);
+      setContextNotice(`파일을 불러왔어요: ${file.name}. ${CONTEXT_MAX_LENGTH.toLocaleString()}자 이후는 잘렸어요.`);
     } else {
       setContext(merged);
-      setContextNotice(`${file.name}을(를) 불러왔어요.`);
+      setContextNotice(`파일을 불러왔어요: ${file.name}`);
     }
   };
 
@@ -187,7 +187,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
       });
       setChatMessages((current) => [
         ...current,
-        { role: "assistant", content: response.message },
+        { role: "assistant", content: response.source === "fallback" ? `기본 안내 · 실시간 AI 답변이 아닌 준비된 안내입니다.\n\n${response.message}` : response.message },
       ]);
     } catch (cause) {
       setChatError(cause instanceof Error ? cause.message : "도우미의 답변을 받지 못했습니다.");
@@ -229,9 +229,9 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
       <section className="mx-auto max-w-2xl text-center">
-        <p className="eyebrow">Create a room</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">우리 팀의 결정을 시작해요.</h1>
-        <p className="mx-auto mt-4 max-w-xl leading-7 text-stone-600">질문과 평가 기준을 정하면 공유 가능한 6자리 코드가 생성됩니다.</p>
+        <p className="eyebrow">결정 만들기</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">무엇을 결정하나요?</h1>
+        <p className="mx-auto mt-4 max-w-xl leading-7 text-stone-600">질문, 선택지, 판단 기준을 정하면 팀에 공유할 6자리 코드가 생깁니다.</p>
       </section>
 
       <form onSubmit={submit} className="card mx-auto mt-10 max-w-2xl space-y-6">
@@ -250,7 +250,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
         <div>
           <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <label htmlFor="room-context" className="block text-sm font-bold text-stone-600">
-              배경 맥락 · 선택
+              결정 배경 · 선택
             </label>
             <button
               type="button"
@@ -275,7 +275,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               setContext(event.target.value);
               setContextNotice("");
             }}
-            placeholder="한 줄이어도 좋고, 회의록을 통째로 붙여 넣어도 됩니다. AI 기준 추천과 이후 검토의 근거가 됩니다."
+            placeholder="결정에 필요한 배경, 예산, 기한 등을 적어 주세요. 불필요한 개인정보는 빼 주세요."
             maxLength={CONTEXT_MAX_LENGTH}
           />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -295,7 +295,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               <div>
                 <h2 className="font-bold text-stone-800">선택지</h2>
                 <p className="mt-1 text-sm leading-6 text-stone-500">
-                  팀이 실제로 고를 <strong className="text-stone-700">후보</strong>예요. 서로 다른 해결 방법을 적어 주세요.
+                  생각해 둔 <strong className="text-stone-700">선택지</strong>를 적어 주세요. 필요하면 AI가 찾은 후보 중 골라 추가할 수 있어요.
                 </p>
               </div>
             </div>
@@ -305,7 +305,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               onClick={() => void requestOptionSuggestions()}
               disabled={optionSuggesting}
             >
-              {optionSuggesting ? "추천하는 중…" : optionSuggestions ? "다시 추천" : "✦ AI 선택지 추천"}
+              {optionSuggesting ? "찾는 중…" : optionSuggestions ? "다른 후보 보기" : "선택지 더 찾아보기"}
             </button>
           </div>
 
@@ -343,8 +343,8 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           {optionSuggestions && !optionSuggesting && (
             <div className="mt-4 border-t border-black/5 pt-4">
               <div className="mb-3 flex items-center gap-2">
-                <p className="text-xs font-bold text-moss-700">AI 추천 선택지</p>
-                {optionSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 추천</span>}
+                <p className="text-xs font-bold text-moss-700">선택지 후보</p>
+                {optionSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 예시</span>}
               </div>
               <ul className="grid gap-2 sm:grid-cols-2">
                 {optionSuggestions.options.map((item) => {
@@ -373,9 +373,9 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
             <div className="flex gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-moss-700 text-sm font-bold text-white">2</span>
               <div>
-                <h2 className="font-bold text-stone-800">평가 기준</h2>
+                <h2 className="font-bold text-stone-800">판단 기준</h2>
                 <p className="mt-1 text-sm leading-6 text-stone-500">
-                  위 선택지를 비교하는 공통 <strong className="text-stone-700">잣대</strong>예요. 모든 후보에 똑같이 적용합니다.
+                  모든 선택지에 적용할 <strong className="text-stone-700">기준</strong>을 적어 주세요. 빠진 기준은 AI 제안을 보고 추가할 수 있어요.
                 </p>
               </div>
             </div>
@@ -385,7 +385,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               onClick={() => void requestCriteriaSuggestions()}
               disabled={criteriaSuggesting}
             >
-              {criteriaSuggesting ? "추천하는 중…" : criteriaSuggestions ? "다시 추천" : "✦ AI 평가 기준 추천"}
+              {criteriaSuggesting ? "찾는 중…" : criteriaSuggestions ? "다른 후보 보기" : "빠진 기준 찾아보기"}
             </button>
           </div>
 
@@ -397,7 +397,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
                   value={criterion}
                   onChange={(event) => updateItem(setCriteria, index, event.target.value)}
                   placeholder={index === 0 ? "예: 실행 가능성" : "긍정적인 방향의 기준을 입력하세요"}
-                  aria-label={`평가 기준 ${index + 1}`}
+                  aria-label={`판단 기준 ${index + 1}`}
                   maxLength={200}
                   required
                 />
@@ -406,8 +406,8 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-xl text-stone-500 hover:text-red-700 disabled:opacity-30"
                   onClick={() => removeItem(setCriteria, index, 1)}
                   disabled={criteria.length <= 1}
-                  aria-label={`평가 기준 ${index + 1} 삭제`}
-                  title="평가 기준 삭제"
+                  aria-label={`판단 기준 ${index + 1} 삭제`}
+                  title="판단 기준 삭제"
                 >
                   −
                 </button>
@@ -415,7 +415,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
             ))}
           </div>
           <button type="button" className="secondary-button mt-3 w-full" onClick={() => addItem(setCriteria)} disabled={criteria.length >= 10}>
-            <span aria-hidden="true">＋</span> 평가 기준 직접 추가
+            <span aria-hidden="true">＋</span> 판단 기준 직접 추가
           </button>
           <p className="mt-2 text-xs leading-5 text-stone-500">점수가 높을수록 좋은 상태가 되도록 적어 주세요. 예: ‘비용’보다 ‘비용 효율성’</p>
           {criteriaError && <span className={errorClass}>{criteriaError}</span>}
@@ -424,8 +424,8 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
           {criteriaSuggestions && !criteriaSuggesting && (
             <div className="mt-4 border-t border-black/5 pt-4">
               <div className="mb-3 flex items-center gap-2">
-                <p className="text-xs font-bold text-moss-700">AI 추천 평가 기준</p>
-                {criteriaSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 추천</span>}
+                <p className="text-xs font-bold text-moss-700">판단 기준 후보</p>
+                {criteriaSuggestions.source === "fallback" && <span className="rounded-full bg-white px-2 py-1 text-[11px] text-stone-500">기본 예시</span>}
               </div>
               <ul className="space-y-2">
                 {criteriaSuggestions.criteria.map((item) => {
@@ -457,8 +457,8 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
 
         <section className="overflow-hidden rounded-3xl border border-moss-500/30 bg-moss-50/50">
           <div className="border-b border-moss-500/15 px-5 py-4">
-            <p className="font-bold text-stone-800">✦ AI 결정 도우미</p>
-            <p className="mt-1 text-xs text-stone-500">방을 만들기 전 질문과 항목을 대화로 다듬어 보세요. 최종 선택은 대신하지 않아요.</p>
+            <p className="font-bold text-stone-800">설정 도움받기</p>
+            <p className="mt-1 text-xs text-stone-500">AI와 대화하며 질문, 선택지, 판단 기준을 다듬을 수 있어요. AI는 최종 선택을 대신하지 않아요.</p>
           </div>
           <div className="max-h-72 space-y-3 overflow-y-auto px-5 py-4" aria-live="polite">
             {chatMessages.map((message, index) => (
@@ -468,7 +468,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
                 </p>
               </div>
             ))}
-            {chatting && <p className="text-xs font-semibold text-moss-700">답변을 생각하고 있어요…</p>}
+            {chatting && <p className="text-xs font-semibold text-moss-700">답변을 작성하는 중…</p>}
           </div>
           <div className="flex gap-2 border-t border-moss-500/15 bg-white/60 p-3">
             <input
@@ -483,7 +483,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
               }}
               placeholder="예: 이 선택지들이 충분히 다른가요?"
               maxLength={2_000}
-              aria-label="AI 결정 도우미에게 보낼 메시지"
+              aria-label="설정을 돕는 AI에게 보낼 메시지"
             />
             <button type="button" className="primary-button shrink-0" onClick={() => void sendChatMessage()} disabled={!chatInput.trim() || chatting}>
               보내기
@@ -557,7 +557,7 @@ function CreateRoomPage({ isAuthenticated, loading, onCreate }: CreateRoomPagePr
             (submissionMode === "named" && !isAuthenticated)
           }
         >
-          {loading ? "방 만드는 중…" : "방 만들기"}
+          {loading ? "만드는 중…" : "결정 만들기"}
         </button>
       </form>
     </div>

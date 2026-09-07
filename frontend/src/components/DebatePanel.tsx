@@ -26,32 +26,32 @@ const MAX_TEXT = 2000;
 
 const statusOptions: Array<{ value: DefenseStatus; label: string; hint: string }> = [
   { value: "mitigated", label: "확인 완료", hint: "근거와 대비책이 있어요" },
-  { value: "open", label: "확인 필요", hint: "아직 검증하지 못했어요" },
-  { value: "invalid", label: "해당 없음", hint: "우리 상황과 맞지 않아요" },
+  { value: "open", label: "추가 논의 필요", hint: "팀에서 더 확인하거나 논의해야 해요" },
+  { value: "invalid", label: "현재 결정과 관련 없음", hint: "이 질문은 현재 결정의 범위에 해당하지 않아요" },
 ];
 
 const statusLabel: Record<DefenseStatus, string> = {
   mitigated: "확인 완료",
-  open: "확인 필요",
-  invalid: "해당 없음",
+  open: "추가 논의 필요",
+  invalid: "현재 결정과 관련 없음",
 };
 
 const resolutionMeta: Record<ChallengeResolution, { label: string; badge: string; border: string }> = {
-  resolved: { label: "문제 없음", badge: "bg-moss-600 text-white", border: "border-moss-500" },
-  open: { label: "회의에서 확인", badge: "bg-amber-500 text-white", border: "border-amber-400" },
-  reframed: { label: "다시 확인", badge: "bg-coral text-white", border: "border-coral" },
+  resolved: { label: "근거 확인", badge: "bg-moss-600 text-white", border: "border-moss-500" },
+  open: { label: "추가 확인 필요", badge: "bg-amber-500 text-white", border: "border-amber-400" },
+  reframed: { label: "질문 구체화", badge: "bg-coral text-white", border: "border-coral" },
 };
 
 const responseFields: Record<DefenseStatus, Array<{ field: DraftTextField; label: string; placeholder: string }>> = {
   mitigated: [
-    { field: "evidence", label: "확인한 근거", placeholder: "예: 지난 3개월 운영 데이터에서 문제가 없었어요." },
+    { field: "evidence", label: "확인한 근거", placeholder: "예: 지난 3개월간 오류율이 기준인 1% 미만이었어요." },
     { field: "mitigation", label: "문제가 생기면 할 일", placeholder: "예: 오류율이 5%를 넘으면 이전 방식으로 돌아가요." },
   ],
   open: [
     { field: "unknowns", label: "무엇을 확인해야 하나요?", placeholder: "예: 실제 사용자 5명에게 이번 주 안에 테스트해야 해요." },
   ],
   invalid: [
-    { field: "evidence", label: "왜 우리 상황과 맞지 않나요?", placeholder: "예: 우리는 이미 이 조건을 계약 단계에서 제외했어요." },
+    { field: "evidence", label: "현재 결정과 관련 없는 이유", placeholder: "예: 이번 결정은 국내 출시만 다뤄서 해외 배송 조건은 해당하지 않아요." },
   ],
 };
 
@@ -134,7 +134,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
-        setLoadError(cause instanceof Error ? cause.message : "공방 정보를 불러오지 못했습니다.");
+        setLoadError(cause instanceof Error ? cause.message : "확인 질문을 불러오지 못했어요.");
       });
     return () => {
       cancelled = true;
@@ -168,7 +168,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
       setJustCompleted(true);
       await onCompleted();
     } catch (cause) {
-      setSubmitError(cause instanceof Error ? cause.message : "답변을 제출하지 못했습니다.");
+      setSubmitError(cause instanceof Error ? cause.message : "답변 처리 중 오류가 발생했어요.");
     } finally {
       setSubmitting(false);
     }
@@ -178,13 +178,13 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
     return (
       <ReadOnlyQuestions
         advocate={fallbackAdvocate}
-        note={`위험 점검을 불러오지 못해 질문만 표시합니다. 분석 결과에는 영향이 없습니다. (${loadError})`}
+        note={`답변 입력 화면을 불러오지 못해 분석 결과에 포함된 질문만 표시해요. (${loadError})`}
       />
     );
   }
 
   if (!debate || !parts) {
-    return <Spinner title="위험 점검을 준비하고 있어요." detail="결정 전에 확인할 질문을 불러옵니다." />;
+    return <Spinner title="확인 질문을 불러오고 있어요." detail="결정 전에 확인할 내용을 준비하고 있어요." />;
   }
 
   const target = debate.evidence_snapshot.target;
@@ -198,15 +198,15 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
       <div className="mt-6 space-y-3">
         <div className={`rounded-3xl p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 ${needsDiscussion > 0 ? "bg-amber-50" : "bg-moss-50"}`}>
           <div>
-            <span className={`text-xs font-bold ${needsDiscussion > 0 ? "text-amber-800" : "text-moss-700"}`}>위험 점검 완료</span>
+            <span className={`text-xs font-bold ${needsDiscussion > 0 ? "text-amber-800" : "text-moss-700"}`}>{debate.resolution_source === "fallback" ? "답변 검토 · 기본 처리 결과" : "AI 답변 검토 결과"}</span>
             <strong className="mt-2 block text-2xl tracking-[-0.03em]">
-              {needsDiscussion > 0 ? `${needsDiscussion}가지는 회의에서 확인하세요.` : "추가로 확인할 위험이 없어요."}
+              {needsDiscussion > 0 ? `${needsDiscussion}개 항목을 팀에서 더 확인해주세요.` : "제시된 질문에 대한 추가 확인 항목이 없습니다."}
             </strong>
-            {justCompleted && needsDiscussion > 0 && <p className="mt-2 text-sm text-stone-600" role="status">확인할 내용은 아래 논의 안건에 자동으로 추가했습니다.</p>}
+            {justCompleted && needsDiscussion > 0 && <p className="mt-2 text-sm text-stone-600" role="status">추가로 확인할 내용을 아래 논의 안건에 추가했어요.</p>}
           </div>
           <div className="mt-4 flex gap-2 text-xs font-semibold sm:mt-0">
-            <span className="rounded-full bg-white px-3 py-2 text-moss-700">문제 없음 {counts.resolved}</span>
-            <span className="rounded-full bg-white px-3 py-2 text-amber-800">확인 필요 {needsDiscussion}</span>
+            <span className="rounded-full bg-white px-3 py-2 text-moss-700">근거 확인 {counts.resolved}</span>
+            <span className="rounded-full bg-white px-3 py-2 text-amber-800">추가 확인 필요 {needsDiscussion}</span>
           </div>
         </div>
 
@@ -223,7 +223,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
               <div className="border-t border-black/5 p-4 text-sm leading-6 sm:p-5">
                 {verdict && <p className="font-medium">{verdict.reason}</p>}
                 {verdict?.resolution === "reframed" && verdict.reframed_question && (
-                  <p className="mt-3 rounded-2xl bg-red-50 p-3"><span className="mr-2 font-bold text-coral">다시 확인할 질문</span>{verdict.reframed_question}</p>
+                  <p className="mt-3 rounded-2xl bg-red-50 p-3"><span className="mr-2 font-bold text-coral">구체화한 질문</span>{verdict.reframed_question}</p>
                 )}
                 {defense && (
                   <div className="mt-4 rounded-2xl bg-stone-50 p-4">
@@ -244,13 +244,13 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
           );
         })}
 
-        {debate.resolution_source === "fallback" && <p className="text-xs text-stone-400">AI 확인을 완료하지 못해 모든 항목을 확인 필요 상태로 유지했습니다.</p>}
+        {debate.resolution_source === "fallback" && <p className="text-xs text-stone-400">AI 검토를 완료하지 못해 기본 처리 결과를 표시했어요. 팀에서 직접 확인해주세요.</p>}
       </div>
     );
   }
 
   if (submitting) {
-    return <Spinner title="답변을 확인하고 있어요." detail="회의에서 다시 볼 내용만 추리는 중입니다." />;
+    return <Spinner title="답변 검토 결과를 준비하고 있어요." detail="제출한 근거와 추가로 확인할 내용을 정리해요." />;
   }
 
   const questionCount = parts.questions.length;
@@ -264,21 +264,21 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
     <form onSubmit={(event) => void submit(event)} className="mt-6">
       <div className="rounded-2xl bg-moss-50 p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
         <div>
-          <strong className="block text-sm text-moss-900">왜 이걸 하나요?</strong>
-          <p className="mt-1 text-sm leading-6 text-stone-600"><strong className="text-ink">{target}</strong>을 실행하기 전에 놓친 위험이 없는지 질문 {questionCount}개로 확인합니다.</p>
+          <strong className="block text-sm text-moss-900">결정 전 확인 질문</strong>
+          <p className="mt-1 text-sm leading-6 text-stone-600"><strong className="text-ink">{target}</strong>에 관한 질문 {questionCount}개에 답해주세요.</p>
         </div>
         <div className="mt-3 flex shrink-0 gap-2 sm:mt-0">
-          <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-moss-700">약 1분</span>
-          {debate.challenger_source === "fallback" && <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-stone-500" title="AI 연결이 원활하지 않아 준비된 기본 질문을 사용합니다.">기본 질문</span>}
+          <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-moss-700">모든 질문에 답변 필요</span>
+          {debate.challenger_source === "fallback" && <span className="inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-stone-500" title="AI 질문을 생성하지 못해 준비된 기본 질문을 사용해요.">기본 질문</span>}
         </div>
       </div>
 
       {activeQuestion ? (
         <fieldset className="mt-5 overflow-hidden rounded-3xl border border-black/10 bg-white">
-          <legend className="sr-only">위험 점검 질문 {safeQuestionIndex + 1}</legend>
+          <legend className="sr-only">결정 전 확인 질문 {safeQuestionIndex + 1}</legend>
           <div className="border-b border-black/5 p-5 sm:p-7">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-xs font-bold text-moss-700">위험 점검 {safeQuestionIndex + 1} / {questionCount}</span>
+              <span className="text-xs font-bold text-moss-700">확인 질문 {safeQuestionIndex + 1} / {questionCount}</span>
               <div className="flex gap-1.5" aria-label={`${questionCount}개 중 ${answeredCount}개 답변 완료`}>
                 {parts.questions.map((question, index) => (
                   <span key={question.challenge_id} className={`h-1.5 w-8 rounded-full ${index === safeQuestionIndex ? "bg-moss-600" : isDraftComplete(drafts[question.challenge_id] ?? emptyDraft()) ? "bg-moss-200" : "bg-stone-200"}`} />
@@ -289,7 +289,7 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
           </div>
 
           <div className="p-5 sm:p-7">
-            <p className="text-sm font-semibold text-stone-700">현재 상태를 선택하세요.</p>
+            <p className="text-sm font-semibold text-stone-700">팀에서 확인한 상태를 선택해주세요.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {statusOptions.map((option) => {
                 const selected = activeDraft.status === option.value;
@@ -342,10 +342,10 @@ function DebatePanel({ roomCode, fallbackAdvocate, onCompleted }: DebatePanelPro
         {safeQuestionIndex < questionCount - 1 ? (
           <button type="button" className="primary-button" onClick={() => setActiveQuestionIndex((current) => Math.min(questionCount - 1, current + 1))} disabled={!isDraftComplete(activeDraft)}>다음 질문</button>
         ) : (
-          <button type="submit" className="primary-button" disabled={submitting || !allComplete}>점검 결과 확인하기</button>
+          <button type="submit" className="primary-button" disabled={submitting || !allComplete}>답변 제출하고 검토하기</button>
         )}
       </div>
-      <p className="mt-3 text-right text-xs text-stone-400">제출 후에는 답변을 수정할 수 없습니다.</p>
+      <p className="mt-3 text-right text-xs text-stone-400">모든 질문에서 상태를 선택하고 표시된 입력란을 채워주세요. 제출 후에는 답변을 수정할 수 없어요.</p>
     </form>
   );
 }

@@ -86,22 +86,22 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
       <section className="mx-auto max-w-2xl text-center">
-        <p className="eyebrow">Step 01 · Private input</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">먼저, 각자의 판단을 남겨요.</h1>
+        <p className="eyebrow">평가 참여</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">팀의 결정을 함께 살펴보세요.</h1>
         <p className="mx-auto mt-4 max-w-xl leading-7 text-stone-600">
-          분위기에 휩쓸리지 않고, 내 소신대로 먼저 점수를 매겨보세요!
+          실행하기 전에 선택지별 평가와 팀원 간 의견 차이를 확인해보세요.
         </p>
       </section>
 
       <form onSubmit={joinRoom} className="card mx-auto mt-10 flex max-w-xl flex-col gap-3 sm:flex-row">
         <label className="flex-1">
-          <span className="mb-2 block text-xs font-bold text-stone-500">6자리 방 코드</span>
+          <span className="mb-2 block text-xs font-bold text-stone-500">참여 코드</span>
           <input
             value={code}
             onChange={(event) => setCode(event.target.value.toUpperCase().slice(0, 6))}
             className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-mono text-lg font-bold uppercase tracking-[0.2em]"
             placeholder="X7K2P9"
-            aria-label="방 코드"
+            aria-label="참여 코드"
             minLength={6}
             maxLength={6}
             required
@@ -113,19 +113,19 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
             className="secondary-button inline-flex items-center gap-2 whitespace-nowrap"
             onClick={() => void copyCode()}
             disabled={code.length !== 6}
-            aria-label={`방 코드 ${code} 복사`}
+            aria-label={`참여 코드 ${code} 복사`}
           >
             <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
-            <span aria-live="polite">{copied ? "복사완료" : "코드복사"}</span>
+            <span aria-live="polite">{copied ? "복사 완료" : "코드 복사"}</span>
           </button>
           <button type="submit" className="primary-button whitespace-nowrap" disabled={loading || code.length !== 6}>
-            {loading ? "확인 중…" : "방 참여하기"}
+            {loading ? "확인 중…" : "참여하기"}
           </button>
         </div>
       </form>
 
       {!room ? (
-        <div className="mt-12 text-center text-sm text-stone-500">방 코드를 입력해 주세요.</div>
+        <div className="mt-12 text-center text-sm text-stone-500">공유받은 6자리 참여 코드를 입력하고 참여하기를 눌러주세요.</div>
       ) : (
         <form onSubmit={submitForm} className="mt-8 space-y-6">
           {room.submission_mode === "named" && (
@@ -140,8 +140,8 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
           <section className="card scroll-mt-24" ref={scoreSectionRef}>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="eyebrow">Score each option</p>
-                <h2 className="section-title">옵션을 기준별로 평가해 주세요.</h2>
+                <p className="eyebrow">선택지 평가</p>
+                <h2 className="section-title">각 선택지를 평가해주세요.</h2>
               </div>
               <span
                 className={`shrink-0 text-sm font-semibold ${
@@ -152,10 +152,10 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
                 {completedScores}/{totalScores}
               </span>
             </div>
-            <p className="mt-3 text-sm text-stone-500">모든 기준에서 1점은 부정적, 5점은 긍정적입니다.</p>
+            <p className="mt-3 text-sm text-stone-500">각 판단 기준에 대해 1~5점으로 평가해주세요. 점수가 높을수록 긍정적인 평가입니다. 비용이나 위험도 유리하다고 볼수록 높은 점수를 주세요.</p>
             {attempted && completedScores !== totalScores && (
               <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
-                아직 평가하지 않은 항목이 {totalScores - completedScores}개 있어요. 붉게 표시된 항목을 채워 주세요.
+                평가하지 않은 항목이 {totalScores - completedScores}개 남았습니다. 빨간색으로 표시된 항목의 점수를 선택해주세요.
               </p>
             )}
 
@@ -221,9 +221,9 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
           </section>
 
           <section className="card">
-            <p className="eyebrow">What matters</p>
-            <h2 className="section-title">기준의 중요도는 얼마인가요?</h2>
-            <p className="mt-3 text-sm text-stone-500">한 기준을 바꾸면 나머지가 비례 조정되며, 합계는 항상 100%입니다.</p>
+            <p className="eyebrow">판단 기준</p>
+            <h2 className="section-title">중요도</h2>
+            <p className="mt-3 text-sm text-stone-500">중요하게 보는 판단 기준의 비중을 높여주세요. 한 기준을 바꾸면 나머지가 자동 조정되어 합계 100%를 유지합니다.</p>
             <div className="mt-7 space-y-6">
               {room.criteria.map((criterion) => (
                 <label key={criterion} className="block">
@@ -255,9 +255,10 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
           <section className="card">
             <fieldset>
               <legend>
-                <span className="eyebrow">Your first choice</span>
-                <span className="section-title block">지금 하나를 고른다면?</span>
+                <span className="eyebrow">선호 선택</span>
+                <span className="section-title block">현재 선호하는 선택지</span>
               </legend>
+              <p className="mt-3 text-sm text-stone-500">평가 점수와 별도로, 지금 가장 선호하는 선택지를 하나 골라주세요.</p>
               <div className="mt-5 space-y-3">
                 {room.options.map((option) => {
                   const selected = firstChoice === option;
@@ -297,14 +298,14 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
               </div>
             </fieldset>
             <label className="mt-6 block">
-              <span className="text-sm font-semibold">그렇게 생각한 이유 <span className="font-normal text-stone-500">(선택)</span></span>
+              <span className="text-sm font-semibold">선택한 이유 <span className="font-normal text-stone-500">(선택)</span></span>
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 rows={4}
                 maxLength={1000}
                 className="mt-2 w-full resize-y rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 leading-6"
-                placeholder="예: 새로운 접근은 매력적이지만, 구현 위험이 걱정돼요."
+                placeholder="예: 기존 도구를 활용할 수 있어 일정에 맞추기 쉽다고 생각합니다."
               />
               <span className="mt-1 block text-right text-xs text-stone-500">{reason.length}/1000</span>
             </label>
@@ -312,12 +313,12 @@ function SubmitPage({ room, loading, onJoin, onSubmit }: SubmitPageProps) {
 
           <div className="flex flex-col items-center pb-4 pt-2">
             <button type="submit" className="primary-button w-full max-w-sm" disabled={loading}>
-              {loading ? "제출 중…" : "의견 제출하기"}
+              {loading ? "제출 중…" : "내 평가 제출하기"}
             </button>
             <p className="mt-3 text-center text-xs text-stone-500">
               {completedScores !== totalScores
-                ? `평가하지 않은 항목이 ${totalScores - completedScores}개 남았어요.`
-                : "제출 후에는 개인 답변이 아닌 팀 전체의 분석을 확인할 수 있어요."}
+                ? `평가하지 않은 항목이 ${totalScores - completedScores}개 남았습니다.`
+                : "평가 점수와 중요도, 현재 선호하는 선택지가 함께 제출됩니다."}
             </p>
           </div>
         </form>

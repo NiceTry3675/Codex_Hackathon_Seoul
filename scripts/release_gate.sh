@@ -90,7 +90,7 @@ if [[ -z "$ASSET_PATH" ]]; then
   exit 1
 fi
 BUNDLE="$(curl --fail --silent "$BASE_URL$ASSET_PATH")"
-if [[ "$BUNDLE" != *"LIVE API"* || "$BUNDLE" == *"MOCK MODE"* ]]; then
+if [[ "$BUNDLE" != *"연결 확인 중"* || "$BUNDLE" == *"예시 데이터"* ]]; then
   echo "release gate failed: frontend bundle is not in LIVE API mode" >&2
   exit 1
 fi

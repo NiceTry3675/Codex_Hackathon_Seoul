@@ -1,4 +1,6 @@
-# Consensus — PLAN.md
+# Consensus — 해커톤 당시 구현 계획
+
+> 이 문서는 초기 6시간 해커톤의 역할과 일정을 보존한 기록이다. Product v2의 사용자 설명과 용어는 [PRODUCT_LANGUAGE.md](PRODUCT_LANGUAGE.md)와 [CONTEXT.md](CONTEXT.md)를 따른다. 당시 직푸시·개발 역할 지시는 현재 작업의 실행 승인을 뜻하지 않는다.
 
 > 6시간 구현 계획. 스펙은 SPEC.md, 서사는 CONTEXT.md 참조.
 > 체제: **Insight 2명 + Build 2명**. 전원이 Codex 에이전트의 발주자·검수자.

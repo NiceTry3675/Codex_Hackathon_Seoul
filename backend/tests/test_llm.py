@@ -380,4 +380,4 @@ def test_answer_decision_assistant_passes_room_state_and_history(monkeypatch):
 def test_fallback_decision_assistant_guides_incomplete_setup():
     assert "결정 질문" in llm.fallback_decision_assistant("", [], [])
     assert "선택지" in llm.fallback_decision_assistant("무엇을 할까요?", ["A"], [])
-    assert "평가 기준" in llm.fallback_decision_assistant("무엇을 할까요?", ["A", "B"], [])
+    assert "판단 기준" in llm.fallback_decision_assistant("무엇을 할까요?", ["A", "B"], [])

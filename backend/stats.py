@@ -226,7 +226,7 @@ def _member_flip(
                 "members": 1,
                 "new_winner": options[new_winner_index],
                 "description": (
-                    f"1명의 의견을 제외하면 결과가 {options[new_winner_index]}(으)로 바뀜"
+                    f"응답 하나를 제외하면 평가 1위가 달라집니다. 제외 후 1위: {options[new_winner_index]}"
                 ),
             }
 
@@ -255,9 +255,9 @@ def _hidden_conflicts(
     ]
     for criterion in low_criteria:
         conflicts.append(
-            f"{winner}은(는) 1순위 다수 선택이지만 {criterion} 평가는 크게 갈립니다."
+            f"선택지: {winner}. 1순위 선택은 과반이지만 {criterion} 평가 점수는 응답자마다 차이가 큽니다."
         )
-        agenda.append(f"{winner}의 {criterion} 평가가 갈리는 근거를 확인하세요.")
+        agenda.append(f"선택지: {winner}. {criterion} 평가 점수를 매긴 이유를 비교해 보세요.")
 
     concern_counts = {criterion: 0 for criterion in criteria}
     for opinion in parsed:
@@ -270,8 +270,8 @@ def _hidden_conflicts(
 
     for criterion, count in concern_counts.items():
         if count > len(parsed) / 2 and criterion not in low_criteria:
-            conflicts.append(f"{winner} 관련 의견에서 {criterion} 우려가 반복됩니다.")
-            agenda.append(f"{winner}의 {criterion} 우려에 대한 대응책을 확인하세요.")
+            conflicts.append(f"응답의 과반에서 {criterion} 우려가 언급되었습니다.")
+            agenda.append(f"{criterion} 우려가 나온 이유와 대응 방법을 논의해 보세요.")
 
     return conflicts, agenda
 
@@ -403,16 +403,16 @@ def analyze_room(
         change = round(abs(closest["to"] - closest["from"]) * 100)
         direction = "오르면" if closest["direction"] == "increase" else "내리면"
         discussion_agenda.append(
-            f"{closest['criterion']} 비중이 {change}%p {direction} "
-            f"{closest['new_winner']}(으)로 바뀝니다. 이 기준을 먼저 논의하세요."
+            f"{closest['criterion']} 중요도가 {change}%p {direction} 평가 1위가 달라집니다. "
+            f"변경 후 1위: {closest['new_winner']}. 이 중요도에 동의하는지 논의해 보세요."
         )
     discussion_agenda.extend(conflict_agenda)
     if member_flip is not None:
         discussion_agenda.append(member_flip["description"] + ".")
     if not nearby_weight_flips:
-        discussion_agenda.insert(0, "현재 결과는 평가 기준의 중요도가 달라져도 비교적 안정적입니다.")
+        discussion_agenda.insert(0, "확인한 중요도 변화 범위(±15%p)에서 평가 1위가 바뀌는 조건을 찾지 못했습니다.")
     if not discussion_agenda:
-        discussion_agenda.append("주요 가정을 먼저 확인하세요.")
+        discussion_agenda.append("기준별 중요도와 평가 점수를 매긴 이유를 확인해 보세요.")
 
     return {
         "vote_share": vote_share,

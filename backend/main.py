@@ -14,7 +14,7 @@ from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Path as ApiPath, Request, Response, status
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Path as ApiPath, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -75,12 +75,14 @@ from .models import (
     Room,
     RoomCreate,
     RoomResponse,
+    SlackOrigin,
     Submission,
     SubmissionCreate,
     SubmitResponse,
 )
 from .storage import RoomStore
 from .stats import analyze_room
+from .slack import build_router as build_slack_router, notify_submissions_complete
 
 
 app = FastAPI(title="Consensus API", version="0.1.0")
@@ -433,13 +435,9 @@ def message_decision_assistant(
     return DecisionAssistantResponse(message=message, source="live")
 
 
-@app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
-def create_room(request: Request, response: Response, payload: RoomCreate) -> RoomResponse:
-    if payload.submission_mode == "named" and user_from_request(request) is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="authentication is required to create named rooms",
-        )
+def _create_room(payload: RoomCreate, slack_origin: SlackOrigin | None = None) -> Room:
+    if slack_origin is not None and payload.submission_mode != "anonymous":
+        raise HTTPException(422, "Slack room creation supports anonymous submissions only")
     with rooms_lock:
         while True:
             code = _new_room_code()
@@ -449,11 +447,23 @@ def create_room(request: Request, response: Response, payload: RoomCreate) -> Ro
                 submissions=[],
                 created_at=created_at,
                 expires_at=created_at + timedelta(hours=payload.expires_in_hours),
+                slack_origin=slack_origin,
                 **payload.model_dump(),
             )
             if room_store.create(room):
                 break
         room_analysis_locks[code] = Lock()
+    return room
+
+
+@app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
+def create_room(request: Request, response: Response, payload: RoomCreate) -> RoomResponse:
+    if payload.submission_mode == "named" and user_from_request(request) is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication is required to create named rooms",
+        )
+    room = _create_room(payload)
     _ensure_participation_cookie(request, response, room)
     return _room_response(room)
 
@@ -477,6 +487,7 @@ def get_room(
 def submit_opinion(
     payload: SubmissionCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
@@ -546,6 +557,8 @@ def submit_opinion(
             detail=detail_by_outcome.get(outcome, "submission failed"),
         )
     submission_count = len(room.submissions)
+    if room.slack_origin is not None and submission_count == room.expected_members:
+        background_tasks.add_task(notify_submissions_complete, room)
     return SubmitResponse(
         id=submission.id,
         submission_count=submission_count,
@@ -787,6 +800,8 @@ def defend_decision(
         room_store.save(room)
         return room.debate
 
+
+app.include_router(build_slack_router(_get_room, get_analysis, get_decision_record, _create_room))
 
 frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 if frontend_dist.is_dir():

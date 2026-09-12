@@ -55,6 +55,28 @@ function App() {
       void loadRoom(DEFAULT_ROOM_CODE).catch(() => undefined);
       return;
     }
+    const params = new URLSearchParams(window.location.search);
+    const linkedCode = params.get("room")?.trim().toUpperCase();
+    if (linkedCode && /^[A-Z0-9]{6}$/.test(linkedCode)) {
+      setBusy(true);
+      void api.getRoom(linkedCode)
+        .then(async (linkedRoom) => {
+          setRoom(linkedRoom);
+          if (params.get("view") === "results") {
+            setStage("waiting");
+            if (linkedRoom.is_complete) {
+              setAnalysis(await api.getAnalysis(linkedCode));
+              setStage("results");
+            }
+          } else {
+            setStage("submit");
+          }
+        })
+        .catch((cause) => setError(cause instanceof Error ? cause.message : "결정을 불러오지 못했습니다."))
+        .finally(() => setBusy(false));
+    } else if (params.get("view") === "create") {
+      setStage("create");
+    }
     void Promise.all([api.getAuthConfig(), api.getAuthState()])
       .then(([config, state]) => {
         setAuthConfig(config);

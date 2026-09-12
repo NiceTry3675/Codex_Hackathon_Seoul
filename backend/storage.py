@@ -112,7 +112,9 @@ class RoomStore:
                     room.used_anonymous_token_hashes.append(token_hash)
                 room.version += 1
                 self._memory[normalized] = room
-                return "ok", room
+                # Return this append's snapshot. A later concurrent append must not
+                # make two callers both observe themselves as the final submission.
+                return "ok", room.model_copy(deep=True)
 
         from botocore.exceptions import ClientError
 

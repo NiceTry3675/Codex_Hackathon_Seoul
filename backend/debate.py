@@ -144,7 +144,7 @@ def fallback_resolutions(
         DefenseResolution(
             challenge_id=question.challenge_id,
             resolution="open",
-            reason="검증 판정을 확인할 수 없어 이 쟁점은 열린 상태로 유지됩니다.",
+            reason="AI가 답변을 검토하지 못했습니다. 이 질문은 추가 확인이 필요합니다.",
         )
         for question in questions
     ]

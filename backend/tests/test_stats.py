@@ -125,7 +125,7 @@ def test_weight_flip_searches_both_directions_and_classifies_distance():
     assert theoretical_flips
     assert all(item["proximity"] == "theoretical" for item in theoretical_flips)
     assert theoretical["discussion_agenda"][0] == (
-        "현재 결과는 평가 기준의 중요도가 달라져도 비교적 안정적입니다."
+        "확인한 중요도 변화 범위(±15%p)에서 평가 1위가 바뀌는 조건을 찾지 못했습니다."
     )
 
 
@@ -160,7 +160,7 @@ def test_member_removal_and_hidden_conflict_are_descriptive():
         ["risk"],
     )
     assert conflict["score_agreement"]["A"]["risk"] == "LOW"
-    assert "평가는 크게 갈립니다" in conflict["hidden_conflicts"][0]
+    assert "평가 점수는 응답자마다 차이가 큽니다" in conflict["hidden_conflicts"][0]
 
 
 def test_empty_room_is_rejected_explicitly():

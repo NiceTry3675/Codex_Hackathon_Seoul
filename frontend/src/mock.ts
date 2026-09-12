@@ -81,7 +81,7 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     [optionC]: { 창의성: "HIGH", "구현 가능성": "HIGH", "발표 임팩트": "HIGH" },
   },
   hidden_conflicts: [
-    "A. AI 보안 도구은(는) 1순위 다수 선택이지만 구현 가능성 평가는 크게 갈립니다.",
+    "가장 많은 사람이 선호한 선택지: A. AI 보안 도구. 구현 가능성 점수는 참여자마다 차이가 큽니다.",
   ],
   stability: {
     [optionA]: 0.477,
@@ -103,13 +103,13 @@ export const MOCK_ANALYSIS: AnalysisResponse = {
     },
     {
       type: "member",
-      description: "1명의 의견을 제외하면 결과가 B. 팀 의사결정 도구(으)로 바뀜",
+      description: "응답 하나를 제외하면 평가 1위가 달라집니다. 제외 후 1위: B. 팀 의사결정 도구.",
     },
   ],
   discussion_agenda: [
-    "구현 가능성 비중이 1%p 오르면 B. 팀 의사결정 도구(으)로 바뀝니다. 이 기준을 먼저 논의하세요.",
-    "A. AI 보안 도구의 구현 가능성 평가가 갈리는 근거를 확인하세요.",
-    "1명의 의견을 제외하면 결과가 B. 팀 의사결정 도구(으)로 바뀜.",
+    "구현 가능성 중요도가 1%p 오르면 평가 1위가 바뀝니다. 변경 후 1위: B. 팀 의사결정 도구. 이 기준의 중요도를 함께 확인해주세요.",
+    "A. AI 보안 도구의 구현 가능성에 서로 다른 점수를 준 이유를 함께 확인해주세요.",
+    "응답 하나를 제외하면 평가 1위가 달라집니다. 제외 후 1위: B. 팀 의사결정 도구.",
   ],
   devils_advocate: {
     target: optionA,
@@ -204,8 +204,8 @@ export const mockApi = {
       : payload.options.length < 2
         ? "선택지는 팀이 실제로 고를 후보예요. 서로 겹치지 않는 대안을 두 개 이상 적어 보세요."
         : payload.criteria.length === 0
-          ? "평가 기준은 모든 선택지를 비교하는 공통 잣대예요. 실행 가능성이나 사용자 가치부터 생각해 보세요."
-          : "선택지는 후보, 평가 기준은 후보를 비교하는 잣대예요. 지금 항목들이 서로 겹치지 않는지 함께 확인해 볼까요?";
+          ? "판단 기준은 선택지를 비교할 때 살펴볼 항목입니다. 실행 가능성이나 사용자 가치처럼 모든 선택지에 적용할 기준을 적어주세요."
+          : "선택지가 서로 겹치지 않는지, 판단 기준은 점수가 높을수록 좋은 상태를 뜻하는지 확인해주세요.";
     return { message, source: "fallback" };
   },
 
@@ -274,14 +274,14 @@ export const mockApi = {
 
   async defendDecision(_code: string, payload: DefenderTurnPayload): Promise<DebateState> {
     await delay(900);
-    if (debate.completed) throw new Error("debate is already complete");
+    if (debate.completed) throw new Error("이미 답변 검토가 끝났습니다. 제출한 답변은 수정할 수 없습니다.");
     const questions = debate.messages.filter(
       (message): message is ChallengerQuestion => message.role === "challenger" && message.turn === 1,
     );
     const expected = new Set(questions.map((question) => question.challenge_id));
     const actual = payload.answers.map((answer) => answer.challenge_id);
     if (actual.length !== new Set(actual).size || actual.some((id) => !expected.has(id)) || actual.length !== expected.size) {
-      throw new Error("answers must match every challenge_id");
+      throw new Error("모든 질문에 하나씩 답변해주세요.");
     }
 
     const next = structuredClone(debate);
@@ -314,18 +314,18 @@ export const mockApi = {
         ...(answer.status === "mitigated" && hasEvidence
           ? {
               resolution: "resolved" as const,
-              reason: "확인된 근거와 대응책이 실패 조건을 직접 해소합니다.",
+              reason: "예시 처리 결과입니다. 답변에 근거와 대응책이 입력되어 있습니다.",
               reframed_question: null,
             }
           : answer.status === "invalid"
             ? {
                 resolution: "reframed" as const,
-                reason: "질문 전제를 반박했지만 검증 방법은 아직 없어 더 작은 질문으로 좁힙니다.",
-                reframed_question: "이 전제가 틀렸다는 것을 가장 먼저 확인할 수 있는 신호는 무엇인가요?",
+                reason: "예시 처리 결과입니다. 질문이 현재 상황과 관련 없는 이유를 확인해주세요.",
+                reframed_question: "이 질문이 현재 상황에 해당하지 않는다고 판단한 근거는 무엇인가요?",
               }
             : {
                 resolution: "open" as const,
-                reason: "검증 가능한 근거가 아직 없어 이 쟁점은 열린 상태로 유지됩니다.",
+                reason: "예시 처리 결과입니다. 추가로 확인할 내용을 팀에서 논의해주세요.",
                 reframed_question: null,
               }),
       };
@@ -339,13 +339,13 @@ export const mockApi = {
 
   async getDecisionRecord(_code: string): Promise<DecisionRecord> {
     await delay(120);
-    if (!decisionRecord) throw new Error("decision record not found");
+    if (!decisionRecord) throw new Error("아직 저장한 결정 기록이 없습니다.");
     return structuredClone(decisionRecord);
   },
 
   async createDecisionRecord(_code: string, payload: DecisionRecordPayload): Promise<DecisionRecord> {
     await delay(220);
-    if (decisionRecord) throw new Error("decision record already exists");
+    if (decisionRecord) throw new Error("이미 결정 기록을 저장했습니다.");
     decisionRecord = {
       initial_majority_choice: optionA,
       analysis_winner: MOCK_ANALYSIS.current_winner,
@@ -360,13 +360,13 @@ export const mockApi = {
 
   async getDecisionRecheck(_code: string): Promise<DecisionRecheck> {
     await delay(120);
-    if (!decisionRecheck) throw new Error("decision recheck not found");
+    if (!decisionRecheck) throw new Error("아직 논의 후 다시 계산한 결과가 없습니다.");
     return structuredClone(decisionRecheck);
   },
 
   async createDecisionRecheck(_code: string, payload: DecisionRecheckPayload): Promise<DecisionRecheck> {
     await delay(260);
-    if (decisionRecheck) throw new Error("decision recheck already exists");
+    if (decisionRecheck) throw new Error("이미 논의 후 다시 계산한 결과를 저장했습니다.");
     const after = structuredClone(MOCK_ANALYSIS);
     after.team_weights = Object.fromEntries(Object.entries(payload.weights).map(([key, value]) => [key, value / 100]));
     after.current_winner = calculateRanking(

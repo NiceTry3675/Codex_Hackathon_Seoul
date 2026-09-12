@@ -9,7 +9,7 @@ test("mock decision record becomes available after saving and can be fetched aga
     criteria: ["가치", "실행 가능성"],
   });
 
-  await assert.rejects(mockApi.getDecisionRecord(DEFAULT_ROOM_CODE), /decision record not found/);
+  await assert.rejects(mockApi.getDecisionRecord(DEFAULT_ROOM_CODE), /아직 저장한 결정 기록이 없습니다/);
 
   const saved = await mockApi.createDecisionRecord(DEFAULT_ROOM_CODE, {
     final_choice: "A",

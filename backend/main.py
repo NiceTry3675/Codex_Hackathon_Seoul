@@ -14,7 +14,7 @@ from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Path as ApiPath, Request, Response, status
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Path as ApiPath, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -75,13 +75,16 @@ from .models import (
     Room,
     RoomCreate,
     RoomResponse,
+    SlackOrigin,
     Submission,
     SubmissionCreate,
     SubmitResponse,
 )
-from .slack import router as slack_router
 from .storage import RoomStore
 from .stats import analyze_room
+from .slack import build_router as build_slack_router, notify_submissions_complete
+from .slack_accounts import build_account_router, get_accounts
+from .slack_identity import identity_hash
 
 
 app = FastAPI(title="Consensus API", version="0.1.0")
@@ -171,7 +174,7 @@ def _ensure_participation_cookie(
 def _new_room_code() -> str:
     while True:
         code = "".join(secrets.choice(ROOM_CODE_ALPHABET) for _ in range(6))
-        if room_store.get(code) is None:
+        if room_store.get_retained(code) is None:
             return code
 
 
@@ -434,6 +437,83 @@ def message_decision_assistant(
     return DecisionAssistantResponse(message=message, source="live")
 
 
+def _retention_deadline(room: Room) -> datetime:
+    try:
+        days = int(os.getenv("SLACK_HISTORY_RETENTION_DAYS", "90"))
+    except ValueError:
+        raise HTTPException(503, "Invalid Slack history retention setting") from None
+    if not 7 <= days <= 365:
+        raise HTTPException(503, "Invalid Slack history retention setting")
+    return max(room.expires_at, room.created_at + timedelta(days=days))
+
+
+def _linked_identity(request: Request) -> tuple[str, str] | None:
+    team = os.getenv("SLACK_TEAM_ID", "").strip()
+    if not team or not os.getenv("SLACK_SIGNING_SECRET"):
+        return None
+    user = user_from_request(request)
+    if user is None:
+        return None
+    slack_user = get_accounts(room_store).linked_identity(team, user.google_sub)
+    return (team, slack_user) if slack_user else None
+
+
+def _remember_room(room: Room, team: str, user: str) -> None:
+    """A history failure must not turn a committed evaluation into a failed one."""
+    try:
+        retained = (room_store.get_retained(room.code) if room.retained_until is not None else
+                    room_store.retain_until(room.code, _retention_deadline(room)))
+        if retained is not None:
+            get_accounts(room_store).record_room(team, user, retained)
+    except Exception as exc:
+        logger.warning("Slack history update failed room=%s error=%s", room.code, type(exc).__name__)
+
+
+def _create_room(payload: RoomCreate, slack_origin: SlackOrigin | None = None,
+                 request_id: str | None = None) -> Room:
+    if slack_origin is not None and payload.submission_mode != "anonymous":
+        raise HTTPException(422, "Slack room creation supports anonymous submissions only")
+    with rooms_lock:
+        while True:
+            creation_id = None
+            if request_id and slack_origin:
+                creation_id = hmac.new(os.environ["SLACK_SIGNING_SECRET"].encode(),
+                    f"create:{slack_origin.team_id}:{request_id}".encode(), hashlib.sha256).hexdigest()
+                number = int(creation_id, 16)
+                code = ""
+                for _ in range(6):
+                    number, digit = divmod(number, len(ROOM_CODE_ALPHABET))
+                    code += ROOM_CODE_ALPHABET[digit]
+                existing = room_store.get_retained(code)
+                if existing is not None:
+                    if existing.creation_request_id == creation_id:
+                        return existing
+                    raise HTTPException(409, "Room code collision; open a new creation form")
+            else:
+                code = _new_room_code()
+            created_at = datetime.now(timezone.utc)
+            room = Room(
+                code=code,
+                submissions=[],
+                created_at=created_at,
+                expires_at=created_at + timedelta(hours=payload.expires_in_hours),
+                slack_origin=slack_origin,
+                creation_request_id=creation_id,
+                **payload.model_dump(),
+            )
+            if slack_origin is not None:
+                room.retained_until = _retention_deadline(room)
+            if room_store.create(room):
+                break
+            if creation_id:
+                existing = room_store.get_retained(code)
+                if existing and existing.creation_request_id == creation_id:
+                    return existing
+                raise HTTPException(409, "Room creation conflicted; open a new creation form")
+        room_analysis_locks[code] = Lock()
+    return room
+
+
 @app.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 def create_room(request: Request, response: Response, payload: RoomCreate) -> RoomResponse:
     if payload.submission_mode == "named" and user_from_request(request) is None:
@@ -441,20 +521,10 @@ def create_room(request: Request, response: Response, payload: RoomCreate) -> Ro
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication is required to create named rooms",
         )
-    with rooms_lock:
-        while True:
-            code = _new_room_code()
-            created_at = datetime.now(timezone.utc)
-            room = Room(
-                code=code,
-                submissions=[],
-                created_at=created_at,
-                expires_at=created_at + timedelta(hours=payload.expires_in_hours),
-                **payload.model_dump(),
-            )
-            if room_store.create(room):
-                break
-        room_analysis_locks[code] = Lock()
+    linked = _linked_identity(request)
+    room = _create_room(payload)
+    if linked:
+        _remember_room(room, *linked)
     _ensure_participation_cookie(request, response, room)
     return _room_response(room)
 
@@ -478,14 +548,43 @@ def get_room(
 def submit_opinion(
     payload: SubmissionCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     code: str = ApiPath(min_length=6, max_length=6, pattern=r"^[A-Za-z0-9]{6}$"),
 ) -> SubmitResponse:
     room = _get_room(code)
+    token_hash = None
+    if room.submission_mode == "anonymous":
+        raw_token = request.cookies.get(_participation_cookie_name(room.code))
+        if not _valid_participation_token(room.code, raw_token):
+            raise HTTPException(403, "a valid room participation token is required")
+        token_hash = _hash_participation_token(room.code, raw_token)
+    linked = _linked_identity(request)
+    additional = [identity_hash(*linked, room.code)] if linked else None
+    result, saved, added = _submit_to_room(payload, code, token_hash, additional)
+    if linked:
+        _remember_room(saved, *linked)
+    if added and result.is_complete and saved.slack_origin is not None:
+        background_tasks.add_task(notify_submissions_complete, saved)
+    return result
+
+
+def _submit_to_room(payload: SubmissionCreate, code: str, token_hash: str | None,
+                    additional_token_hashes: list[str] | None = None,
+                    submission_id: str | None = None) -> tuple[SubmitResponse, Room, bool]:
+    room = _get_room(code)
+    if submission_id:
+        previous = next((item for item in room.submissions if item.id == submission_id), None)
+        if previous is not None and SubmissionCreate.model_validate(
+                previous.model_dump(include=set(SubmissionCreate.model_fields))).model_dump() == payload.model_dump():
+            return SubmitResponse(id=previous.id, submission_count=len(room.submissions),
+                                  expected_members=room.expected_members,
+                                  is_complete=len(room.submissions) >= room.expected_members), room, False
     if len(room.submissions) >= room.expected_members:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="room is full",
-        )
+        raise HTTPException(409, "room is full")
+    if token_hash and token_hash in room.used_anonymous_token_hashes:
+        raise HTTPException(409, "this browser already submitted to this room")
+    if any(value in room.used_anonymous_token_hashes for value in additional_token_hashes or []):
+        raise HTTPException(409, "this identity already submitted to this room")
     if room.submission_mode == "named" and payload.participant_name is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -496,15 +595,6 @@ def submit_opinion(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="participant_name must be omitted for anonymous rooms",
         )
-    token_hash: str | None = None
-    if room.submission_mode == "anonymous":
-        raw_token = request.cookies.get(_participation_cookie_name(room.code))
-        if not _valid_participation_token(room.code, raw_token):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="a valid room participation token is required",
-            )
-        token_hash = _hash_participation_token(room.code, raw_token)
     _require_exact_keys(set(payload.scores), room.options, "scores")
     _require_exact_keys(set(payload.weights), room.criteria, "weights")
     for option, criterion_scores in payload.scores.items():
@@ -524,12 +614,21 @@ def submit_opinion(
         )
         parsed = None
     submission = Submission(
-        id=str(uuid4()),
+        id=submission_id or str(uuid4()),
         parsed=parsed,
         **payload.model_dump(),
     )
 
-    outcome, room = room_store.append_submission(room.code, submission, token_hash)
+    outcome, room = room_store.append_submission(
+        room.code, submission, token_hash, additional_token_hashes,
+        idempotent=submission_id is not None,
+        retained_until=_retention_deadline(room) if submission_id or additional_token_hashes else None,
+    )
+    if outcome == "duplicate_submission" and room is not None:
+        previous = next(item for item in room.submissions if item.id == submission.id)
+        return SubmitResponse(id=previous.id, submission_count=len(room.submissions),
+                              expected_members=room.expected_members,
+                              is_complete=len(room.submissions) >= room.expected_members), room, False
     if outcome != "ok" or room is None:
         detail_by_outcome = {
             "full": "room is full",
@@ -552,7 +651,22 @@ def submit_opinion(
         submission_count=submission_count,
         expected_members=room.expected_members,
         is_complete=submission_count >= room.expected_members,
-    )
+    ), room, True
+
+
+def _submit_slack(code: str, payload: SubmissionCreate, team: str, user: str, request_id: str) -> SubmitResponse:
+    room = _get_room(code)
+    if room.slack_origin is not None and room.slack_origin.team_id != team:
+        raise HTTPException(404, "room not found")
+    if room.submission_mode != "anonymous":
+        raise HTTPException(422, "Use the web form for named rooms")
+    token = identity_hash(team, user, code)
+    submission_id = hmac.new(token.encode(), request_id.encode(), hashlib.sha256).hexdigest()
+    result, saved, added = _submit_to_room(payload, code, token, submission_id=submission_id)
+    _remember_room(saved, team, user)
+    if added and result.is_complete and saved.slack_origin is not None:
+        notify_submissions_complete(saved)
+    return result
 
 
 @app.get(
@@ -789,7 +903,11 @@ def defend_decision(
         return room.debate
 
 
-app.include_router(slack_router)
+app.include_router(build_slack_router(
+    _get_room, get_analysis, get_decision_record, _create_room,
+    submit_room=_submit_slack, accounts=lambda: get_accounts(room_store), remember_room=_remember_room,
+))
+app.include_router(build_account_router(room_store))
 
 frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 if frontend_dist.is_dir():

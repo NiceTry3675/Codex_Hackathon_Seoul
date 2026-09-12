@@ -175,6 +175,23 @@ class RoomCreate(ApiModel):
         return clean_labels(values)
 
 
+class DecisionDraft(ApiModel):
+    question: str = Field(min_length=1, max_length=500)
+    options: list[str] = Field(min_length=2, max_length=5)
+    criteria: list[str] = Field(min_length=1, max_length=5)
+    context: str = Field(max_length=2000)
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        return clean_question(value)
+
+    @field_validator("options", "criteria")
+    @classmethod
+    def validate_labels(cls, values: list[str]) -> list[str]:
+        return clean_labels(values)
+
+
 class CriterionSuggestion(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     why: str = Field(min_length=1, max_length=500)
@@ -305,6 +322,13 @@ class DecisionRecord(ApiModel):
     changed_from_initial: bool
 
 
+class SlackOrigin(ApiModel):
+    """Room-level notification destination; never a participant identity."""
+
+    team_id: str = Field(pattern=r"^T[A-Z0-9]+$")
+    channel_id: str = Field(pattern=r"^[CGD][A-Z0-9]+$")
+
+
 class Room(ApiModel):
     code: str
     question: str
@@ -315,6 +339,9 @@ class Room(ApiModel):
     submission_mode: SubmissionMode = "anonymous"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=24))
+    # Private history can outlive the public room and its submission deadline.
+    retained_until: datetime | None = None
+    creation_request_id: str | None = None
     version: int = Field(default=0, ge=0)
     used_anonymous_token_hashes: list[str] = Field(default_factory=list)
     submissions: list[Submission] = Field(default_factory=list)
@@ -324,6 +351,7 @@ class Room(ApiModel):
     debate: DebateState | None = None
     decision_record: DecisionRecord | None = None
     decision_recheck: dict[str, Any] | None = None
+    slack_origin: SlackOrigin | None = None
 
 
 class RoomResponse(ApiModel):

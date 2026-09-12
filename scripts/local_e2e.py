@@ -34,7 +34,7 @@ def main() -> None:
             raise SystemExit("local E2E failed: frontend JavaScript asset not found")
         bundle = client.get(asset_match.group(1))
         bundle.raise_for_status()
-        if "LIVE API" not in bundle.text or "MOCK MODE" in bundle.text:
+        if "연결 확인 중" not in bundle.text or "예시 데이터" in bundle.text:
             raise SystemExit("local E2E failed: frontend bundle is not in LIVE API mode")
 
         room = client.post("/api/rooms", json=data["room"])

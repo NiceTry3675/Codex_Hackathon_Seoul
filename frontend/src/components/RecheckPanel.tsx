@@ -24,7 +24,7 @@ function closestWeightFlip(analysis: AnalysisResponse): WeightFlipPoint | undefi
 }
 
 function flipChange(item: WeightFlipPoint | undefined) {
-  if (!item) return "가까운 뒤집힘 조건 없음";
+  if (!item) return "찾은 변화 조건 없음";
   const change = Math.round((item.to - item.from) * 100);
   return `${item.criterion}: ${change >= 0 ? "+" : ""}${change}%p`;
 }
@@ -66,7 +66,7 @@ function RecheckPanel({ room, analysis, onDecisionRecorded }: RecheckPanelProps)
         consensus_note: consensusNote.trim(),
       }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Re-check 결과를 저장하지 못했습니다.");
+      setError(cause instanceof Error ? cause.message : "다시 계산한 결과를 저장하지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -96,27 +96,28 @@ function RecheckPanel({ room, analysis, onDecisionRecorded }: RecheckPanelProps)
     return (
       <div className="mt-6 space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl bg-stone-50 p-4"><span className="text-xs text-stone-500">논의 전</span><strong className="mt-1 block">{recheck.before.current_winner}</strong><span className="text-xs text-stone-500">견고한 선택 · {recheck.before.robust_choice}</span></div>
-          <div className="rounded-2xl bg-moss-50 p-4"><span className="text-xs text-moss-700">논의 후</span><strong className="mt-1 block text-moss-800">{recheck.after.current_winner}</strong><span className="text-xs text-stone-500">견고한 선택 · {recheck.after.robust_choice}</span></div>
+          <div className="rounded-2xl bg-stone-50 p-4"><span className="text-xs text-stone-500">논의 전 평가 1위</span><strong className="mt-1 block">{recheck.before.current_winner}</strong><span className="text-xs text-stone-500">조건별 계산에서 가장 자주 1위 · {recheck.before.robust_choice}</span></div>
+          <div className="rounded-2xl bg-moss-50 p-4"><span className="text-xs text-moss-700">논의 후 평가 1위</span><strong className="mt-1 block text-moss-800">{recheck.after.current_winner}</strong><span className="text-xs text-stone-500">조건별 계산에서 가장 자주 1위 · {recheck.after.robust_choice}</span></div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
+          <p className="text-sm text-stone-600 sm:col-span-2">조건별 1위 비율 · 괄호는 논의 전과의 차이입니다.</p>
           {Object.entries(recheck.after.stability).map(([option, value]) => {
             const before = recheck.before.stability[option] ?? 0;
             return <div key={option} className="rounded-2xl border border-black/5 bg-white p-4 text-sm"><div className="flex justify-between gap-3"><strong>{option}</strong><span>{percent(value)} <span className="text-stone-400">({value - before >= 0 ? "+" : ""}{Math.round((value - before) * 100)}%p)</span></span></div></div>;
           })}
         </div>
         <div className="rounded-2xl bg-ink p-4 text-sm leading-6 text-white/80">
-          <p>Flip Point {recheck.before.flip_points.length}개 → {recheck.after.flip_points.length}개 · {winnerChanged || robustChanged ? "선택 결과가 달라졌습니다." : "선택 결과는 유지되었습니다."}</p>
-          <p className="mt-2">가장 가까운 weight Flip Point · 논의 전 {flipChange(closestWeightFlip(recheck.before))} → 논의 후 {flipChange(closestWeightFlip(recheck.after))}</p>
+          <p>찾은 변화 조건 {recheck.before.flip_points.length}개 → {recheck.after.flip_points.length}개 · {winnerChanged || robustChanged ? "평가 1위 또는 조건별 계산의 최다 1위가 달라졌습니다." : "평가 1위와 조건별 계산의 최다 1위가 유지됐습니다."}</p>
+          <p className="mt-2">결과가 바뀌는 최소 중요도 변화 · 논의 전 {flipChange(closestWeightFlip(recheck.before))} → 논의 후 {flipChange(closestWeightFlip(recheck.after))}</p>
         </div>
         <div className="rounded-2xl bg-stone-50 p-4 text-sm leading-6"><strong>최종 선택 · {recheck.final_choice}</strong><p className="mt-2 whitespace-pre-wrap text-stone-600">{recheck.consensus_note}</p></div>
         {decisionRecordExists ? (
           <p className="rounded-2xl bg-moss-50 p-4 text-sm font-semibold text-moss-800">최종 결정이 기록되었습니다.</p>
         ) : (
           <div className="space-y-2">
-            <button type="button" className="primary-button" disabled={recording} onClick={() => void saveDecisionRecord()}>{recording ? "기록 중…" : "이 결정 확정하고 기록하기"}</button>
+            <button type="button" className="primary-button" disabled={recording} onClick={() => void saveDecisionRecord()}>{recording ? "저장 중…" : "결정과 근거 저장하기"}</button>
             {recordError && <p className="text-sm font-semibold text-red-700" role="alert">{recordError}</p>}
-            <p className="text-xs text-stone-500">재검증에 입력한 최종 선택과 합의 메모가 그대로 기록됩니다.</p>
+            <p className="text-xs text-stone-500">팀이 선택한 항목과 결정 이유가 저장됩니다. 저장 후에는 수정할 수 없습니다.</p>
           </div>
         )}
       </div>
@@ -134,11 +135,11 @@ function RecheckPanel({ room, analysis, onDecisionRecorded }: RecheckPanelProps)
           </label>
         ))}
       </div>
-      <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-500">수정 가중치 합계 {Object.values(weights).reduce((sum, value) => sum + value, 0)}%</p>
+      <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-500">변경한 중요도 합계 {Object.values(weights).reduce((sum, value) => sum + value, 0)}%</p>
       <fieldset><legend className="text-sm font-bold text-stone-600">논의 후 최종 선택</legend><div className="mt-3 grid gap-2 sm:grid-cols-2">{room.options.map((option) => <label key={option} className={`cursor-pointer rounded-2xl border p-3 text-sm ${finalChoice === option ? "border-moss-500 bg-moss-50 font-semibold" : "border-black/10 bg-stone-50"}`}><input className="mr-2" type="radio" name="recheck-choice" checked={finalChoice === option} onChange={() => setFinalChoice(option)} />{option}</label>)}</div></fieldset>
-      <label className="block text-sm font-bold text-stone-600">합의 메모<textarea className="mt-2 min-h-28 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-normal leading-6" value={consensusNote} onChange={(event) => setConsensusNote(event.target.value)} maxLength={2000} required placeholder="논의에서 수정한 기준과 감수하기로 한 위험을 남겨 주세요." /></label>
+      <label className="block text-sm font-bold text-stone-600">결정 이유<textarea className="mt-2 min-h-28 w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 font-normal leading-6" value={consensusNote} onChange={(event) => setConsensusNote(event.target.value)} maxLength={2000} required placeholder="중요도를 바꾼 이유, 팀이 이 선택을 한 이유와 남은 우려를 적어주세요." /></label>
       {error && <p className="text-sm font-semibold text-red-700" role="alert">{error}</p>}
-      <button type="submit" className="primary-button" disabled={loading || !consensusNote.trim()}>{loading ? "재계산 중…" : "논의 결과 다시 확인하기"}</button>
+      <button type="submit" className="primary-button" disabled={loading || !consensusNote.trim()}>{loading ? "계산 중…" : "변경한 중요도로 다시 계산하기"}</button>
     </form>
   );
 }

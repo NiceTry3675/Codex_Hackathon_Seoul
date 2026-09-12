@@ -1,6 +1,6 @@
 """Versioned Slack documents in the existing DynamoDB table or local memory.
 
-Every key is namespaced, so public room-code endpoints cannot read Slack rooms.
+Every key is namespaced, so public room-code endpoints cannot read account metadata.
 TTL is checked on reads as DynamoDB deletion is asynchronous. All mutations use
 compare-and-swap; a failed conditional write never silently loses another vote.
 """
@@ -89,9 +89,8 @@ class SlackStore:
             raise ValueError("Slack document is too large")
         encoding = "json"
         stored = encoded
-        # Repeated option/criterion labels dominate larger room documents.
-        # Compress transparently so all 20 supported members can submit full
-        # Unicode inputs and still leave space for the aggregate snapshot.
+        # Compress large index or account documents while keeping DynamoDB item
+        # limits explicit.
         if len(raw) > 300_000:
             stored = base64.b64encode(zlib.compress(raw)).decode("ascii")
             encoding = "zlib-base64"

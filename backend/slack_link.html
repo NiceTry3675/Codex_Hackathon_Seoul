@@ -155,8 +155,18 @@
           content.append(node("p", "기록 보관 기한 " + dateText(room.retained_until), "muted"));
           listSection(content, "선택지", room.options);
           listSection(content, "평가 기준", room.criteria);
+          if (room.web_available) {
+            const link = node("a", room.is_complete ? "웹에서 결과·토론·최종 결정 열기" : "웹에서 평가에 참여하기");
+            link.href = "/?room=" + encodeURIComponent(room.code) + "&view=" + (room.is_complete ? "results" : "submit");
+            content.append(link);
+          }
+          if (result.decision_record) {
+            const record = result.decision_record;
+            content.append(node("h3", "팀이 기록한 최종 결정"), node("p", record.final_choice), node("p", record.final_reason));
+            content.append(node("p", "결정 기록 " + dateText(record.decided_at), "muted"));
+          }
           if (result.analysis) showAnalysis(content, result.analysis);
-          else content.append(node("p", room.is_complete ? "아직 저장된 분석이 없습니다. Slack에서 /synq results " + room.code + "를 실행해 주세요." : "전원 제출을 마치면 Slack에서 결과를 분석할 수 있습니다.", "notice"));
+          else content.append(node("p", room.is_complete ? "아직 저장된 분석이 없습니다. Slack에서 /synq results " + room.code + "를 실행해 주세요." : "전원 제출을 마치면 Slack과 웹에서 결과를 확인할 수 있습니다.", "notice"));
         } catch (error) {
           if (version !== detailVersion) return;
           byId("detail-title").textContent = "방 기록을 열 수 없습니다";
@@ -184,7 +194,7 @@
           });
           cursor = result.next_cursor || null;
           byId("more").hidden = !cursor;
-          message("history-message", byId("rooms").children.length ? "" : "참여한 Slack 방이 없습니다. Slack에서 /synq create 또는 /synq join 방코드로 시작해 보세요.");
+          message("history-message", byId("rooms").children.length ? "" : "참여한 Slack 방이 없습니다. Slack에서 /synq new로 만들거나 /synq join 방코드로 평가를 제출해 보세요.");
         } catch (error) {
           if (version !== historyVersion) return;
           const notLinked = error.status === 403 || error.status === 404;
@@ -277,11 +287,12 @@
       </div>
       <div id="signin"><div id="google-button"></div></div>
       <p id="account-message" class="notice" role="status" aria-live="polite"></p>
-      <p class="muted"><small>개별 답변의 작성자는 팀원에게 공개되지 않습니다. 서비스는 중복 제출 방지와 개인 기록 제공을 위해 계정과 참여 정보를 연결합니다.</small></p>
+      <p class="muted"><small>익명 방의 개별 답변 작성자는 팀원에게 공개되지 않습니다. 서비스는 중복 제출 방지와 개인 기록 제공을 위해 Slack 사용자 ID와 참여 정보를 비공개로 보관하며, 연결을 확인하면 Google 계정으로 내 기록을 볼 수 있습니다. 실명 방은 웹에서 이름을 입력해 참여합니다.</small></p>
     </section>
     <section id="history" class="card" aria-labelledby="history-title" hidden>
       <div class="row"><h2 id="history-title">내가 참여한 방</h2><button id="refresh" type="button">새로고침</button></div>
-      <p class="muted">방을 선택하면 제출 현황과 저장된 팀 전체 분석을 확인할 수 있습니다.</p>
+      <p class="muted">Slack 또는 연결된 Google 계정으로 만들거나 평가를 제출한 방의 제출 현황, 팀 전체 분석, 최종 결정을 확인할 수 있습니다. 웹과 Slack에서 같은 6자리 방을 사용하며, 웹에서는 마감 전까지 방 코드를 아는 사람이 접근할 수 있습니다.</p>
+      <p class="muted"><small>제출 마감과 개인 기록 보관 기한은 별도입니다. Slack에서 방을 만들거나, 연결된 Google 계정으로 웹에서 방을 만들거나, Slack 또는 연결된 계정으로 평가를 제출하면 방 생성일부터 기본 90일 동안 개인 기록을 보관합니다. 연결 전에 익명으로 참여한 기록은 자동으로 연결되지 않습니다. 각 방의 보관 기한을 확인해 주세요.</small></p>
       <p id="history-message" class="notice" role="status" aria-live="polite"></p>
       <ul id="rooms" class="rooms"></ul>
       <button id="more" type="button" hidden>이전 방 더 보기</button>

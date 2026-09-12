@@ -1,8 +1,8 @@
 {
   "display_information": {
     "name": "SynQ",
-    "description": "팀원에게 익명으로 의견을 제출하고, 결정과 참여 기록을 확인합니다.",
-    "background_color": "#245d9f"
+    "description": "스레드에서 결정을 만들고, 평가와 내 참여 기록을 확인합니다.",
+    "background_color": "#3b5e48"
   },
   "features": {
     "bot_user": {
@@ -13,15 +13,15 @@
       {
         "command": "/synq",
         "url": "https://YOUR_HOST/api/slack/commands",
-        "description": "방 생성, 익명 의견 제출, 결과와 내 참여 기록",
-        "usage_hint": "create | join CODE | status CODE | results CODE | rooms | link",
+        "description": "결정 만들기, 평가 참여와 내 기록",
+        "usage_hint": "new | from THREAD_LINK | join CODE | rooms | link",
         "should_escape": false
       }
     ]
   },
   "oauth_config": {
     "scopes": {
-      "bot": ["commands", "chat:write"]
+      "bot": ["commands", "chat:write", "channels:history"]
     }
   },
   "settings": {

@@ -1,0 +1,36 @@
+{
+  "display_information": {
+    "name": "SynQ",
+    "description": "팀원에게 익명으로 의견을 제출하고, 결정과 참여 기록을 확인합니다.",
+    "background_color": "#245d9f"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "SynQ",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/synq",
+        "url": "https://YOUR_HOST/api/slack/commands",
+        "description": "방 생성, 익명 의견 제출, 결과와 내 참여 기록",
+        "usage_hint": "create | join CODE | status CODE | results CODE | rooms | link",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": ["commands", "chat:write"]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://YOUR_HOST/api/slack/interactions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

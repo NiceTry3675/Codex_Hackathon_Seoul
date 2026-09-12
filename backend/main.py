@@ -79,6 +79,7 @@ from .models import (
     SubmissionCreate,
     SubmitResponse,
 )
+from .slack import router as slack_router
 from .storage import RoomStore
 from .stats import analyze_room
 
@@ -787,6 +788,8 @@ def defend_decision(
         room_store.save(room)
         return room.debate
 
+
+app.include_router(slack_router)
 
 frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 if frontend_dist.is_dir():
